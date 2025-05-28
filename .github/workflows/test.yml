@@ -40,27 +40,4 @@ jobs:
         file: ./coverage.xml
         fail_ci_if_error: false
 
-  test-utility:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        cd aqua-license-utility
-        pip install -r requirements.txt
-        pip install pytest
-    
-    - name: Run utility tests
-      run: |
-        cd aqua-license-utility
-        # When you add tests, uncomment this line
-        # python -m pytest tests/
-        echo "No tests configured yet"
+  # Utility tests should be in the utility repository, not here
