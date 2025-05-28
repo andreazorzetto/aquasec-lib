@@ -11,6 +11,9 @@ on:
         default: false
         type: boolean
 
+permissions:
+  id-token: write  # Required for trusted publishing
+
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
@@ -43,16 +46,10 @@ jobs:
     
     - name: Publish to Test PyPI
       if: github.event.inputs.test_pypi == 'true'
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
-      run: |
-        twine upload --repository testpypi dist/*
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        repository-url: https://test.pypi.org/legacy/
     
     - name: Publish to PyPI
       if: github.event_name == 'release' && github.event.inputs.test_pypi != 'true'
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      run: |
-        twine upload dist/*
+      uses: pypa/gh-action-pypi-publish@release/v1
