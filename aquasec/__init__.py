@@ -5,7 +5,7 @@ This library provides a clean API interface for interacting with Aqua Security's
 platform, extracted from the andreactl tool.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from .auth import (
     authenticate,
@@ -38,6 +38,13 @@ from .enforcers import (
 
 from .repositories import (
     api_get_repositories
+)
+
+from .code_repositories import (
+    api_get_code_repositories,
+    get_all_code_repositories,
+    get_code_repo_count,
+    get_code_repo_count_by_scope
 )
 
 from .common import (
@@ -82,6 +89,12 @@ __all__ = [
     
     # Repositories
     'api_get_repositories',
+    
+    # Code Repositories
+    'api_get_code_repositories',
+    'get_all_code_repositories',
+    'get_code_repo_count',
+    'get_code_repo_count_by_scope',
     
     # Common utilities
     'write_content_to_file',

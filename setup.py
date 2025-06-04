@@ -9,7 +9,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name='aquasec',
-    version='0.1.1',
+    version='0.2.0',
     author='Andrea Zorzetto',
     author_email='your-email@example.com',
     description='API client library for Aqua Security platform',
