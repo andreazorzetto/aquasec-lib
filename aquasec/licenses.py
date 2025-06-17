@@ -12,10 +12,22 @@ def api_get_licenses(server, token, verbose=False):
     headers = {'Authorization': f'Bearer {token}'}
 
     if verbose:
-        print(api_url)
+        print(f"API URL: {api_url}")
 
-    res = requests.get(url=api_url, headers=headers, verify=False)
-    return res
+    try:
+        res = requests.get(url=api_url, headers=headers, verify=False)
+        if verbose:
+            print(f"Response status: {res.status_code}")
+        
+        if not res.ok:
+            print(f"API Error: {res.status_code} - {res.reason}")
+            if verbose:
+                print(f"Response body: {res.text}")
+        
+        return res
+    except Exception as e:
+        print(f"Request failed: {str(e)}")
+        raise
 
 
 def api_get_dta_license(server, token, verbose=False):
@@ -56,29 +68,69 @@ def get_licences(csp_endpoint, token, verbose=False):
         'num_advanced_functions': 0,
         'vshield': False,
         'num_protected_kube_nodes': 0,
-        'malware_protection': False
+        'malware_protection': False,
+        'num_active': 0
     }
 
     res = api_get_licenses(csp_endpoint, token, verbose)
+    
+    # Check if the request was successful
+    if not res.ok:
+        print(f"Failed to fetch licenses: {res.status_code} - {res.reason}")
+        if res.status_code == 401:
+            print("Authentication failed. Please check your credentials.")
+        elif res.status_code == 403:
+            print("Access denied. Please check your permissions.")
+        return licenses
+    
+    # Parse JSON response
+    try:
+        response_data = res.json()
+    except ValueError as e:
+        print(f"Failed to parse JSON response: {str(e)}")
+        if verbose:
+            print(f"Response text: {res.text}")
+        return licenses
+    
+    # Extract license details
+    if "details" in response_data and "num_active" in response_data["details"]:
+        licenses["num_active"] = response_data["details"]["num_active"]
+    else:
+        if verbose:
+            print("Warning: 'details' or 'num_active' not found in response")
+            print(f"Response structure: {list(response_data.keys())}")
 
-    licenses["num_active"] = res.json()["details"]["num_active"]
-
-    licenses_data = res.json()["data"]
+    # Extract license data
+    if "data" not in response_data:
+        print("Warning: 'data' field not found in response")
+        if verbose:
+            print(f"Available fields: {list(response_data.keys())}")
+        return licenses
+    
+    licenses_data = response_data["data"]
     if verbose:
+        print(f"Found {len(licenses_data)} license(s)")
         print(licenses_data)
 
     for license in licenses_data:
-        if license["status"] == "Active":
-            licenses["num_repositories"] += license["products"]["num_repositories"]
-            licenses["num_enforcers"] += license["products"]["num_enforcers"]
-            licenses["num_microenforcers"] += license["products"]["num_microenforcers"]
-            licenses["num_vm_enforcers"] += license["products"]["num_vm_enforcers"]
-            licenses["num_functions"] += license["products"]["num_functions"]
-            licenses["num_code_repositories"] += license["products"]["num_code_repositories"]
-            licenses["num_advanced_functions"] += license["products"]["num_advanced_functions"]
-            licenses["vshield"] = license["products"]["vshield"]
-            licenses["num_protected_kube_nodes"] += license["products"]["num_protected_kube_nodes"]
-            licenses["malware_protection"] = license["products"]["malware_protection"]
+        try:
+            if license.get("status") == "Active":
+                products = license.get("products", {})
+                # Add values only if they exist and are not -1 (unlimited)
+                for key in ["num_repositories", "num_enforcers", "num_microenforcers", 
+                           "num_vm_enforcers", "num_functions", "num_code_repositories",
+                           "num_advanced_functions", "num_protected_kube_nodes"]:
+                    value = products.get(key, 0)
+                    if value > 0:  # Only add positive values (-1 means unlimited)
+                        licenses[key] += value
+                
+                # Boolean flags
+                licenses["vshield"] = products.get("vshield", False) or licenses["vshield"]
+                licenses["malware_protection"] = products.get("malware_protection", False) or licenses["malware_protection"]
+        except Exception as e:
+            if verbose:
+                print(f"Error processing license data: {str(e)}")
+                print(f"License data: {license}")
 
     return licenses
 
