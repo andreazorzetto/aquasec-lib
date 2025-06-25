@@ -18,11 +18,13 @@ def api_get_licenses(server, token, verbose=False):
         res = requests.get(url=api_url, headers=headers, verify=False)
         if verbose:
             print(f"Response status: {res.status_code}")
+            print(f"Request headers: {headers}")
         
         if not res.ok:
             print(f"API Error: {res.status_code} - {res.reason}")
             if verbose:
                 print(f"Response body: {res.text}")
+                print(f"Response headers: {dict(res.headers)}")
         
         return res
     except Exception as e:
