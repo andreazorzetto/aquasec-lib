@@ -108,7 +108,7 @@ def get_enforcer_count(server, token, group=None, scope=None, verbose=False):
 
     # Get count for specific enforcer group
     if group:
-        enforcers = get_enforcers_from_group(server, token, group)
+        enforcers = get_enforcers_from_group(server, token, group, verbose=verbose)
         
         # iterate through enforcers
         for enforcer in enforcers["result"]:
@@ -142,7 +142,7 @@ def get_enforcer_count(server, token, group=None, scope=None, verbose=False):
 
     # Get count for all enforcers groups (optionally filtered by scope)
     else:
-        enforcer_groups = get_enforcer_groups(server, token, scope)
+        enforcer_groups = get_enforcer_groups(server, token, scope, verbose=verbose)
 
         # iterate through enforcer groups
         for group in enforcer_groups["result"]:

@@ -5,7 +5,7 @@ This library provides a clean API interface for interacting with Aqua Security's
 platform, extracted from the andreactl tool.
 """
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 from .auth import (
     authenticate,
@@ -19,6 +19,7 @@ from .licenses import (
     api_get_licenses,
     api_get_dta_license,
     api_post_dta_license_utilization,
+    get_all_licenses,
     get_licences,
     get_repo_count_by_scope,
     get_enforcer_count_by_scope
@@ -58,7 +59,14 @@ from .config import (
     load_profile_credentials,
     test_connection,
     interactive_setup,
-    list_profiles
+    list_profiles,
+    get_profile_info,
+    get_all_profiles_info,
+    format_profile_info,
+    delete_profile_with_result,
+    set_default_profile_with_result,
+    profile_not_found_response,
+    profile_operation_response
 )
 
 __all__ = [
@@ -73,6 +81,7 @@ __all__ = [
     'api_get_licenses',
     'api_get_dta_license',
     'api_post_dta_license_utilization',
+    'get_all_licenses',
     'get_licences',
     'get_repo_count_by_scope',
     'get_enforcer_count_by_scope',
@@ -106,5 +115,12 @@ __all__ = [
     'load_profile_credentials',
     'test_connection',
     'interactive_setup',
-    'list_profiles'
+    'list_profiles',
+    'get_profile_info',
+    'get_all_profiles_info',
+    'format_profile_info',
+    'delete_profile_with_result',
+    'set_default_profile_with_result',
+    'profile_not_found_response',
+    'profile_operation_response'
 ]
