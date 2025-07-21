@@ -55,9 +55,6 @@ def authenticate(verbose=False):
 Refer to the docs for info about SaaS API keys auth:
 https://docs.aquasec.com/saas/api-reference/getting-started-with-aqua-platform-apis/api-authentication
 
-Example run command:
-> docker run --env-file aqua-saas-prod.env -ti andreazorzetto/andreactl command
-
 Example creds file:
 ----------------------------------------
 # Required for SaaS API Keys Auth
