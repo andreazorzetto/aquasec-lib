@@ -5,7 +5,7 @@ This library provides a clean API interface for interacting with Aqua Security's
 platform, extracted from the andreactl tool.
 """
 
-__version__ = "0.3.4"
+__version__ = "0.4.0"
 
 from .auth import (
     authenticate,
@@ -21,7 +21,6 @@ from .licenses import (
     api_post_dta_license_utilization,
     get_all_licenses,
     get_licences,
-    get_repo_count_by_scope,
     get_enforcer_count_by_scope
 )
 
@@ -39,7 +38,9 @@ from .enforcers import (
 
 from .repositories import (
     api_get_repositories,
-    get_all_repositories
+    get_all_repositories,
+    get_repo_count,
+    get_repo_count_by_scope
 )
 
 from .code_repositories import (
@@ -47,6 +48,11 @@ from .code_repositories import (
     get_all_code_repositories,
     get_code_repo_count,
     get_code_repo_count_by_scope
+)
+
+from .functions import (
+    api_get_functions,
+    get_function_count
 )
 
 from .common import (
@@ -84,7 +90,6 @@ __all__ = [
     'api_post_dta_license_utilization',
     'get_all_licenses',
     'get_licences',
-    'get_repo_count_by_scope',
     'get_enforcer_count_by_scope',
     
     # Scopes
@@ -100,12 +105,18 @@ __all__ = [
     # Repositories
     'api_get_repositories',
     'get_all_repositories',
+    'get_repo_count',
+    'get_repo_count_by_scope',
     
     # Code Repositories
     'api_get_code_repositories',
     'get_all_code_repositories',
     'get_code_repo_count',
     'get_code_repo_count_by_scope',
+    
+    # Functions
+    'api_get_functions',
+    'get_function_count',
     
     # Common utilities
     'write_content_to_file',
