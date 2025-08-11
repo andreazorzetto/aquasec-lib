@@ -130,16 +130,6 @@ def get_licences(csp_endpoint, token, verbose=False):
     return licenses
 
 
-def get_repo_count_by_scope(server, token, scopes_list, verbose=False):
-    """Get repository count by scope"""
-    from .repositories import api_get_repositories
-    
-    repos_by_scope = {}
-
-    for scope in scopes_list:
-        repos_by_scope[scope] = api_get_repositories(server, token, 1, 20, None, scope, verbose).json()["count"]
-
-    return repos_by_scope
 
 
 def get_enforcer_count_by_scope(server, token, scopes_list, verbose=False):

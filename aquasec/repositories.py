@@ -76,3 +76,64 @@ def get_all_repositories(server, token, registry=None, scope=None, verbose=False
             print(f"Fetched {len(all_repos)} of {total} repositories...")
     
     return all_repos
+
+
+def get_repo_count(server, token, scope=None, verbose=False):
+    """
+    Get count of image repositories
+    
+    Args:
+        server: The server URL
+        token: Authentication token
+        scope: Optional scope filter
+        verbose: Print debug information
+        
+    Returns:
+        Number of repositories
+    """
+    try:
+        # Get first page with minimal size to just get the count
+        response = api_get_repositories(server, token, page=1, page_size=1, scope=scope, verbose=verbose)
+        
+        if response.status_code == 200:
+            response_json = response.json()
+            count = response_json.get("count", 0)
+            if verbose:
+                print(f"Total repositories count: {count}")
+            return count
+        else:
+            if verbose:
+                print(f"Failed to get repositories count: {response.status_code}")
+            return 0
+    except Exception as e:
+        if verbose:
+            print(f"Error getting repositories count: {e}")
+        return 0
+
+
+def get_repo_count_by_scope(server, token, scopes_list, verbose=False):
+    """Get repository count by scope"""
+    repos_by_scope = {}
+
+    for scope in scopes_list:
+        response = api_get_repositories(server, token, 1, 20, None, scope, verbose)
+        if response.status_code != 200:
+            if verbose:
+                print(f"DEBUG: API call failed for scope '{scope}' with status {response.status_code}")
+            repos_by_scope[scope] = 0
+            continue
+            
+        try:
+            response_json = response.json()
+            # Since include_totals=true is always used, count field should always be present
+            repos_by_scope[scope] = response_json["count"]
+        except KeyError:
+            if verbose:
+                print(f"DEBUG: Missing 'count' field for scope '{scope}' - API response: {response_json}")
+            raise Exception(f"API response missing 'count' field for scope '{scope}'")
+        except Exception as e:
+            if verbose:
+                print(f"DEBUG: Failed to parse JSON for scope '{scope}': {e}")
+            raise Exception(f"Failed to parse API response for scope '{scope}': {e}")
+
+    return repos_by_scope

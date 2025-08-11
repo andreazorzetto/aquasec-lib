@@ -94,24 +94,26 @@ def get_enforcer_groups(server, token, scope=None, page_index=1, page_size=100, 
 
 
 def get_enforcer_count(server, token, group=None, scope=None, verbose=False):
-    """Get enforcer count, optionally filtered by group or scope"""
-    page_index = 1
-    page_size = 100
+    """Get enforcer count using efficient direct API calls"""
     enforcer_counter = {
-        "agent": {"connected": 0, "disconnected": 0},
-        "kube_enforcer": {"connected": 0, "disconnected": 0},
-        "host_enforcer": {"connected": 0, "disconnected": 0},
-        "micro_enforcer": {"connected": 0, "disconnected": 0},
-        "nano_enforcer": {"connected": 0, "disconnected": 0},
-        "pod_enforcer": {"connected": 0, "disconnected": 0}
+        "agent": 0,
+        "kube_enforcer": 0,
+        "host_enforcer": 0,
+        "micro_enforcer": 0,
+        "nano_enforcer": 0,
+        "pod_enforcer": 0
     }
 
-    # Get count for specific enforcer group
+    # If specific group is requested, fall back to original method for accuracy
     if group:
         enforcers = get_enforcers_from_group(server, token, group, verbose=verbose)
         
         # iterate through enforcers
         for enforcer in enforcers["result"]:
+            # Only count connected enforcers
+            if enforcer["status"] == "disconnect":
+                continue
+                
             # extract type from enforcer
             enforcer_type = enforcer["type"]
 
@@ -134,24 +136,70 @@ def get_enforcer_count(server, token, group=None, scope=None, verbose=False):
                         enforcer["logicalname"], enforcer_type))
                 continue
 
-            # add to correct counter
-            if enforcer["status"] == "disconnect":
-                enforcer_counter[key]["disconnected"] += 1
-            else:
-                enforcer_counter[key]["connected"] += 1
+            # add to correct counter (only connected)
+            enforcer_counter[key] += 1
 
-    # Get count for all enforcers groups (optionally filtered by scope)
+    # Use efficient direct API calls for total counts (with optional scope)
     else:
-        enforcer_groups = get_enforcer_groups(server, token, scope, verbose=verbose)
+        # Define enforcer type mappings to API types
+        api_type_mappings = [
+            ("agent", "agent"),
+            ("kube_enforcer", "kube_enforcer"),
+            ("micro_enforcer", "micro_enforcer"),
+            ("host_enforcer", "host_enforcer")
+        ]
+        
+        if verbose:
+            if scope:
+                print(f"Getting enforcer counts for scope: {scope}")
+            else:
+                print("Getting total enforcer counts using direct API calls")
 
-        # iterate through enforcer groups
-        for group in enforcer_groups["result"]:
-            # get single enforcer group counts
-            group_counts = get_enforcer_count(server, token, group["id"], None, verbose)
+        for counter_key, api_type in api_type_mappings:
+            try:
+                count = _get_enforcer_count_by_type(server, token, api_type, "connect", scope, verbose)
+                enforcer_counter[counter_key] = count
+            except Exception as e:
+                if verbose:
+                    print(f"Error getting {api_type} count: {e}")
+                enforcer_counter[counter_key] = 0
 
-            # merge counts
-            for enforcer_type, counts in group_counts.items():
-                enforcer_counter[enforcer_type]["connected"] += counts["connected"]
-                enforcer_counter[enforcer_type]["disconnected"] += counts["disconnected"]
+        if verbose:
+            total_count = sum(enforcer_counter.values())
+            print(f"Total enforcers: {total_count}")
 
     return enforcer_counter
+
+
+def _get_enforcer_count_by_type(server, token, enforcer_type, status, scope=None, verbose=False):
+    """Helper function to get enforcer count by type and status using efficient API"""
+    # Build API URL - use direct count endpoint
+    api_url = f"{server}/api/v1/hosts?type={enforcer_type}&status={status}&page=1&pagesize=1"
+    
+    # Add scope filter if provided
+    if scope:
+        api_url += f"&scope={scope}"
+
+    headers = {'Authorization': f'Bearer {token}'}
+
+    if verbose:
+        print(f"API call: {api_url}")
+
+    try:
+        res = requests.get(url=api_url, headers=headers, verify=False)
+        
+        if res.status_code == 200:
+            response_json = res.json()
+            count = response_json.get("count", 0)
+            if verbose:
+                print(f"  {enforcer_type} {status}: {count}")
+            return count
+        else:
+            if verbose:
+                print(f"  API error {res.status_code} for {enforcer_type} {status}")
+            return 0
+            
+    except Exception as e:
+        if verbose:
+            print(f"  Request failed for {enforcer_type} {status}: {e}")
+        return 0

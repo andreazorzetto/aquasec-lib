@@ -61,9 +61,10 @@ aquasec/
 ├── config.py           # Configuration management
 ├── licenses.py         # License-related API calls
 ├── scopes.py          # Application scope functions
-├── enforcers.py       # Enforcer-related functions
+├── enforcers.py       # Enforcer-related functions (optimized in v0.4.0)
 ├── repositories.py    # Repository API calls
 ├── code_repositories.py # Code repository API calls
+├── functions.py       # Serverless functions API calls (NEW in v0.4.0)
 └── common.py          # Utility functions
 ```
 
@@ -173,6 +174,37 @@ scope_counts = get_enforcer_count_by_scope(server, token, scope_names, verbose=T
 
 # Get enforcer groups
 groups = get_enforcer_groups(server, token)
+```
+
+### Serverless Functions (NEW in v0.4.0)
+
+```python
+from aquasec import get_function_count, api_get_functions
+
+# Get total functions count across all scopes
+total_functions = get_function_count(server, token, verbose=True)
+
+# Get functions with pagination (for detailed data)
+functions_response = api_get_functions(server, token, page=1, page_size=50, verbose=True)
+functions_data = functions_response.json() if functions_response.status_code == 200 else {}
+```
+
+### Repository Management
+
+```python
+from aquasec import get_repo_count, get_all_repositories, get_repo_count_by_scope
+
+# Get total repository count
+total_repos = get_repo_count(server, token, verbose=True)
+
+# Get repository count for specific scope
+scoped_repos = get_repo_count(server, token, scope='production', verbose=True)
+
+# Get all repositories with optional filtering
+all_repos = get_all_repositories(server, token, registry='myregistry', verbose=True)
+
+# Get repository count by multiple scopes
+repo_counts = get_repo_count_by_scope(server, token, ['prod', 'staging'], verbose=True)
 ```
 
 ## Building Custom Utilities
