@@ -232,6 +232,38 @@ all_repos = get_all_repositories(server, token, registry='myregistry', verbose=T
 repo_counts = get_repo_count_by_scope(server, token, ['prod', 'staging'], verbose=True)
 ```
 
+## Production-Ready Examples
+
+The `examples/` directory contains production-ready implementations demonstrating how to use the aquasec library effectively:
+
+### 🔧 [License Utility](examples/license-utility/)
+Command-line tool for analyzing license utilization and generating reports.
+- License utilization analysis across scopes
+- Multiple output formats (table, JSON, CSV)
+- 50%+ performance improvement with optimized API calls
+
+### 📊 [Repository Breakdown](examples/repo-breakdown/)
+CLI tool for analyzing repository scope assignments and identifying orphaned repositories.
+- List repositories with scope assignments
+- Identify orphaned repositories (Global scope only)
+- Export results to CSV or JSON
+
+### 💻 [VM Extract](examples/vm-extract/)
+Utility for extracting VM inventory data with advanced filtering capabilities.
+- Comprehensive VM inventory extraction
+- Filter by coverage, cloud provider, region, risk level
+- Memory-efficient streaming for large datasets
+
+**Getting Started with Examples:**
+```bash
+cd examples/license-utility
+pip install -r requirements.txt
+python aqua_license_util.py setup
+python aqua_license_util.py --all-results
+```
+
+See [examples/README.md](examples/README.md) for detailed documentation.
+
 ## Building Custom Utilities
 
 The library makes it easy to create focused utilities:
