@@ -5,7 +5,7 @@ This library provides a clean API interface for interacting with Aqua Security's
 platform, extracted from the andreactl tool.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 from .auth import (
     authenticate,
@@ -53,6 +53,17 @@ from .code_repositories import (
 from .functions import (
     api_get_functions,
     get_function_count
+)
+
+from .vms import (
+    api_get_vms,
+    api_get_vms_count,
+    get_all_vms,
+    get_vm_count,
+    filter_vms_by_coverage,
+    filter_vms_by_cloud_provider,
+    filter_vms_by_region,
+    filter_vms_by_risk_level
 )
 
 from .common import (
@@ -117,6 +128,16 @@ __all__ = [
     # Functions
     'api_get_functions',
     'get_function_count',
+    
+    # VMs
+    'api_get_vms',
+    'api_get_vms_count',
+    'get_all_vms',
+    'get_vm_count',
+    'filter_vms_by_coverage',
+    'filter_vms_by_cloud_provider',
+    'filter_vms_by_region',
+    'filter_vms_by_risk_level',
     
     # Common utilities
     'write_content_to_file',
