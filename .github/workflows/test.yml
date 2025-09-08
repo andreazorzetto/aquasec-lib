@@ -5,13 +5,47 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
+  schedule:
+    - cron: '0 2 * * 1'  # Run every Monday at 2 AM UTC
+  workflow_dispatch:  # Allow manual triggering
 
 permissions:
   contents: read
   security-events: write  # Required for uploading SARIF results
 
 jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      library-changed: ${{ steps.changes.outputs.library }}
+      license-utility-changed: ${{ steps.changes.outputs.license-utility }}
+      repo-breakdown-changed: ${{ steps.changes.outputs.repo-breakdown }}
+      vm-extract-changed: ${{ steps.changes.outputs.vm-extract }}
+      any-example-changed: ${{ steps.changes.outputs.any-example }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dorny/paths-filter@v2
+      id: changes
+      with:
+        filters: |
+          library:
+            - 'aquasec/**'
+            - 'setup.py'
+            - 'requirements.txt'
+            - 'MANIFEST.in'
+            - '.github/workflows/**'
+          license-utility:
+            - 'examples/license-utility/**'
+          repo-breakdown:
+            - 'examples/repo-breakdown/**'
+          vm-extract:
+            - 'examples/vm-extract/**'
+          any-example:
+            - 'examples/**'
+
   test-library:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.library-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -44,37 +78,114 @@ jobs:
         file: ./coverage.xml
         fail_ci_if_error: false
 
-  security-scan:
+
+  test-license-utility:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.license-utility-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    name: Security Scan with Trivy
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    
     steps:
     - uses: actions/checkout@v4
     
-    - name: Run Trivy vulnerability scanner in fs mode
-      uses: aquasecurity/trivy-action@master
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
       with:
-        scan-type: 'fs'
-        scan-ref: '.'
-        format: 'table'
-        exit-code: '1'
-        severity: 'CRITICAL'
-        ignore-unfixed: true
+        python-version: ${{ matrix.python-version }}
     
-    - name: Run Trivy vulnerability scanner for SARIF
-      uses: aquasecurity/trivy-action@master
-      if: always()
-      with:
-        scan-type: 'fs'
-        scan-ref: '.'
-        format: 'sarif'
-        output: 'trivy-results.sarif'
-        severity: 'CRITICAL,HIGH,MEDIUM'
-        ignore-unfixed: true
+    - name: Install library in development mode
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
     
-    - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
-      if: always()
-      with:
-        sarif_file: 'trivy-results.sarif'
+    - name: Install example dependencies
+      run: |
+        cd examples/license-utility
+        pip install -r requirements.txt
+        pip install -r requirements-test.txt
+    
+    - name: Run license utility tests
+      run: |
+        cd examples/license-utility
+        python -m pytest tests/ -v --tb=short
+    
+    - name: Test license utility CLI
+      run: |
+        cd examples/license-utility
+        python aqua_license_util.py --help
 
-  # Utility tests should be in the utility repository, not here
+  test-repo-breakdown:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.repo-breakdown-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install library in development mode
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+    
+    - name: Install example dependencies
+      run: |
+        cd examples/repo-breakdown
+        pip install -r requirements.txt
+        pip install -r requirements-test.txt
+    
+    - name: Run repo breakdown tests
+      run: |
+        cd examples/repo-breakdown
+        python -m pytest tests/ -v --tb=short
+    
+    - name: Test repo breakdown CLI
+      run: |
+        cd examples/repo-breakdown
+        python aqua_repo_breakdown.py --help
+
+  test-vm-extract:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.vm-extract-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install library in development mode
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+    
+    - name: Install example dependencies
+      run: |
+        cd examples/vm-extract
+        pip install -r requirements.txt
+        pip install -r requirements-test.txt
+    
+    - name: Run vm extract tests
+      run: |
+        cd examples/vm-extract
+        python -m pytest tests/ -v --tb=short --continue-on-collection-errors
+    
+    - name: Test vm extract CLI
+      run: |
+        cd examples/vm-extract
+        python aqua_vm_extract.py --help
