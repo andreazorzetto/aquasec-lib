@@ -5,6 +5,28 @@ All notable changes to the aquasec library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-01-08
+
+### Added
+- **NEW**: Added `vms.py` module with comprehensive VM inventory support
+  - `api_get_vms()`: Get VMs from the hub inventory API with pagination
+  - `api_get_vms_count()`: Get VM count from the server
+  - `get_all_vms()`: Get all VMs with automatic pagination handling
+  - `get_vm_count()`: Get total count of VMs
+  - `filter_vms_by_coverage()`: Filter VMs by coverage types (enforcer, agentless, etc.)
+  - `filter_vms_by_cloud_provider()`: Filter VMs by cloud provider (AWS, Azure, GCP)
+  - `filter_vms_by_region()`: Filter VMs by region
+  - `filter_vms_by_risk_level()`: Filter VMs by risk level (critical, high, medium, low)
+- **NEW**: Full support for VM inventory operations with scope filtering
+- **NEW**: Comprehensive VM filtering capabilities for onboarding analysis
+
+### Technical Details
+- VM module uses `/api/v2/hub/inventory/assets/vms/list` endpoint for inventory
+- Automatic pagination with 100 VMs per page for efficiency
+- Support for application scope filtering in all VM operations
+- Case-insensitive filtering for cloud providers and risk levels
+- Robust error handling with verbose output support
+
 ## [0.4.0] - 2025-01-11
 
 ### Added

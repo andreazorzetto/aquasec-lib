@@ -65,6 +65,7 @@ aquasec/
 ├── repositories.py    # Repository API calls
 ├── code_repositories.py # Code repository API calls
 ├── functions.py       # Serverless functions API calls (NEW in v0.4.0)
+├── vms.py             # VM inventory API calls (NEW in v0.5.0)
 └── common.py          # Utility functions
 ```
 
@@ -159,6 +160,30 @@ scopes = get_app_scopes(server, token)
 
 # Get repository count by scope (with optional verbose parameter for debug output)
 repo_counts = get_repo_count_by_scope(server, token, [s['name'] for s in scopes], verbose=True)
+```
+
+### VM Inventory
+
+```python
+from aquasec import get_all_vms, get_vm_count, filter_vms_by_coverage, filter_vms_by_cloud_provider
+
+# Get all VMs
+vms = get_all_vms(server, token)
+
+# Get VM count  
+count = get_vm_count(server, token)
+
+# Filter VMs without enforcer coverage
+vms_without_enforcer = filter_vms_by_coverage(
+    vms, 
+    excluded_types=['vm_enforcer', 'host_enforcer', 'aqua_enforcer']
+)
+
+# Filter by cloud provider
+aws_vms = filter_vms_by_cloud_provider(vms, ['AWS'])
+
+# Filter by risk level
+high_risk_vms = filter_vms_by_risk_level(vms, ['critical', 'high'])
 ```
 
 ### Enforcer Management
