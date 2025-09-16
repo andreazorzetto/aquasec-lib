@@ -5,6 +5,38 @@ All notable changes to the aquasec library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2025-09-16
+
+### Fixed
+- **CRITICAL**: Fixed broken code repositories API endpoint in `code_repositories.py`
+  - Changed from incorrect `/api/v2/hub/inventory/assets/code_repositories/list` to correct `/v2/build/repositories`
+  - Updated to use Supply Chain API instead of Hub Inventory API
+  - Fixed invalid `order_by` parameter from `"-scan_date,repository_status"` to `"-scan_date"`
+  - Updated response field mapping from `count` to `total_count`
+  - Added `next_page` support for proper pagination
+
+### Added
+- **NEW**: Intelligent region detection for Supply Chain API URLs
+  - Added `_get_supply_chain_url()` function with smart region detection
+  - Supports regional endpoints (eu-1, asia-1, au-1, etc.) and US endpoint
+  - Falls back to detecting region from `AQUA_ENDPOINT` when CSP endpoint has no region info
+- **NEW**: Comprehensive test suite for code repositories module
+  - Unit tests for all functions including URL derivation, API calls, and pagination
+  - Integration tests for license utility functionality
+  - Real API testing capabilities with credential validation
+
+### Enhanced
+- **IMPROVED**: License utility debug logging for code repository operations
+  - Enhanced error handling with full traceback support
+  - Better import and execution debugging for troubleshooting
+- **IMPROVED**: Backward compatibility maintained for all existing function signatures
+
+### Technical Details
+- Code repositories now correctly use Supply Chain API at `api.{region}.supply-chain.cloud.aquasec.com`
+- Regional token handling ensures proper authentication across all regions
+- License utility now correctly reports code repository counts in utilization analysis
+- All changes maintain full backward compatibility with existing implementations
+
 ## [0.5.0] - 2025-01-08
 
 ### Added

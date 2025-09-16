@@ -3,38 +3,86 @@ Code repository-related API functions for Andrea library
 """
 
 import requests
+import re
+
+
+def _get_supply_chain_url(server):
+    """
+    Derive the Supply Chain API URL from the server/CSP endpoint
+
+    Args:
+        server: The CSP server URL (e.g., https://xxx.eu-1.cloud.aquasec.com)
+
+    Returns:
+        The Supply Chain API base URL
+    """
+    import os
+
+    # Extract the domain from the server URL
+    match = re.match(r'https?://([^/]+)', server)
+    if not match:
+        raise ValueError(f"Invalid server URL: {server}")
+
+    domain = match.group(1)
+
+    # Check if there's a region in the domain (e.g., eu-1, asia-1, etc.)
+    # Pattern: xxx.REGION.cloud.aquasec.com or just xxx.cloud.aquasec.com
+    region_match = re.search(r'\.(\w+-\d+)\.cloud\.aquasec\.com', domain)
+
+    if region_match:
+        # Regional endpoint - extract region from CSP endpoint
+        region = region_match.group(1)
+        supply_chain_url = f"https://api.{region}.supply-chain.cloud.aquasec.com"
+    else:
+        # CSP endpoint doesn't contain region, check auth endpoint
+        auth_endpoint = os.environ.get('AQUA_ENDPOINT', '')
+        auth_region_match = re.search(r'https?://(\w+-\d+)\.api\.cloudsploit\.com', auth_endpoint)
+
+        if auth_region_match:
+            # Found region in auth endpoint (e.g., eu-1.api.cloudsploit.com)
+            region = auth_region_match.group(1)
+            supply_chain_url = f"https://api.{region}.supply-chain.cloud.aquasec.com"
+        else:
+            # US endpoint (no region specified in either endpoint)
+            supply_chain_url = "https://api.supply-chain.cloud.aquasec.com"
+
+    return supply_chain_url
 
 
 def api_get_code_repositories(server, token, page=1, page_size=50, scope=None, use_estimated_count=False, skip_count=True, verbose=False):
     """
     Get code repositories from the server
-    
+
     Args:
-        server: The server URL
+        server: The server URL (CSP endpoint)
         token: Authentication token
         page: Page number (default: 1)
         page_size: Number of results per page (default: 50)
-        scope: Optional scope filter
-        use_estimated_count: Use estimated count (default: False)
-        skip_count: Skip count calculation (default: True)
+        scope: Optional scope filter (currently not supported by Supply Chain API)
+        use_estimated_count: Not used (kept for compatibility)
+        skip_count: Not used (kept for compatibility)
         verbose: Print debug information
-        
+
     Returns:
         Response object from the API call
     """
-    api_url = f"{server}/api/v2/hub/inventory/assets/code_repositories/list"
-    
+    # Get the Supply Chain API base URL
+    supply_chain_url = _get_supply_chain_url(server)
+
+    # Build the API URL with the new endpoint
+    api_url = f"{supply_chain_url}/v2/build/repositories"
+
     params = {
         "page": page,
-        "pagesize": page_size,
-        "use_estimated_count": str(use_estimated_count).lower(),
-        "skip_count": str(skip_count).lower()
+        "page_size": page_size,
+        "order_by": "-scan_date",
+        "no_scan_repositories": "true"
     }
-    
-    if scope:
-        params["scope"] = scope
-    else:
-        params["scope"] = ""
+
+    # Note: The Supply Chain API doesn't support scope filtering in the same way
+    # This is kept for compatibility but won't filter by scope
+    if scope and verbose:
+        print(f"Warning: Scope filtering is not supported by the Supply Chain API")
     
     headers = {'Authorization': f'Bearer {token}'}
     
@@ -72,15 +120,18 @@ def get_all_code_repositories(server, token, scope=None, verbose=False):
         
         data = res.json()
         repos = data.get("data", [])
-        
+
         if not repos:
             break
-            
+
         all_repos.extend(repos)
-        
-        # Check if there are more pages
-        total = data.get("count", 0)
-        if len(all_repos) >= total or len(repos) < page_size:
+
+        # Check if there are more pages using the Supply Chain API response structure
+        next_page = data.get("next_page")
+        total = data.get("total_count", 0)
+
+        # Stop if no next page or we've collected all repos
+        if not next_page or len(all_repos) >= total or len(repos) < page_size:
             break
             
         page += 1
@@ -107,7 +158,8 @@ def get_code_repo_count(server, token, scope=None, verbose=False):
     if res.status_code != 200:
         raise Exception(f"API call failed with status {res.status_code}: {res.text}")
     
-    return res.json().get("count", 0)
+    # The Supply Chain API returns total_count instead of count
+    return res.json().get("total_count", 0)
 
 
 def get_code_repo_count_by_scope(server, token, scopes_list, verbose=False):

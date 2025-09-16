@@ -44,7 +44,7 @@ from aquasec import (
 )
 
 # Version
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 
 def license_show(server, token, verbose=False, debug=False):
@@ -142,13 +142,19 @@ def license_count(server, token, verbose=False, debug=False):
     # Get code repository count
     total_code_repos = 0
     try:
+        if debug:
+            print("DEBUG: Attempting to import get_code_repo_count...")
         from aquasec import get_code_repo_count
+        if debug:
+            print("DEBUG: Import successful, calling get_code_repo_count...")
         total_code_repos = get_code_repo_count(server, token, verbose=debug)
         if debug:
             print(f"DEBUG: Total code repositories: {total_code_repos}")
     except Exception as e:
         if debug:
             print(f"DEBUG: Code repository counting not available: {e}")
+            import traceback
+            traceback.print_exc()
     
     # Get functions count
     total_functions = 0
