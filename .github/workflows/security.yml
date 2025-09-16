@@ -220,7 +220,7 @@ jobs:
       run: safety check -r examples/vm-extract/requirements.txt --json --output safety-vm-extract.json || true
     
     - name: Upload safety results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: safety-reports
