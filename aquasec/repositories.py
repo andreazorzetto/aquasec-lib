@@ -5,6 +5,30 @@ Repository-related API functions for Andrea library
 import requests
 
 
+def api_delete_repo(server, token, registry, name, verbose=False):
+    """
+    Delete a single repository
+
+    Args:
+        server: The server URL
+        token: Authentication token
+        registry: Registry name
+        name: Repository name
+        verbose: Print debug information
+
+    Returns:
+        Response object from the API call
+    """
+    api_url = f"{server}/api/v2/repositories/{registry}/{name}"
+    headers = {'Authorization': f'Bearer {token}'}
+
+    if verbose:
+        print(f"DELETE {api_url}")
+
+    res = requests.delete(url=api_url, headers=headers, verify=False)
+    return res
+
+
 def api_get_repositories(server, token, page, page_size, registry=None, scope=None, verbose=False):
     """Get repositories from the server"""
     if registry:
