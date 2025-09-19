@@ -42,5 +42,6 @@ Thumbs.db
 *.json
 !requirements.txt
 
-# Test files (temporary)
-test_*.py
+# Temporary test files (use specific patterns for temp files)
+# test_*.py files in project root only (not in tests/ directories)
+/test_*.py
