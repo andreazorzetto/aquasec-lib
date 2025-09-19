@@ -7,7 +7,7 @@ A focused tool for bulk deletion of image repositories from Aqua Security platfo
 - **Safety-first design**: Defaults to dry-run mode, requires `--apply` flag for actual deletions
 - **Flexible filtering**: Filter by registry name, empty repositories only, or use convenience flags
 - **Multiple output formats**: JSON (default), verbose tables, and debug mode
-- **Profile-based authentication**: Secure credential management with multiple profile support
+- **Profile-based authentication**: Secure credential management with built-in multiple profile support
 - **Progress tracking**: Real-time deletion progress and detailed summaries
 
 ## Installation
