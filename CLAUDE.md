@@ -128,8 +128,9 @@ Secure, profile-based credential storage with:
 
 ## Version Information
 
-Current version: 0.5.0 (see setup.py and aquasec/__init__.py)
+Current version: 0.6.0 (see setup.py and aquasec/__init__.py)
 
 Major versions:
 - v0.4.0: Added serverless functions support, enforcer optimizations
 - v0.5.0: Added comprehensive VM inventory module
+- v0.6.0: Added repository deletion functionality and bulk delete utility

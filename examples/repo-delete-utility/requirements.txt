@@ -1,4 +1,4 @@
-aquasec>=0.5.1
+aquasec>=0.6.0
 requests>=2.28.0
 prettytable>=3.5.0
 cryptography>=41.0.0

@@ -217,7 +217,7 @@ functions_data = functions_response.json() if functions_response.status_code == 
 ### Repository Management
 
 ```python
-from aquasec import get_repo_count, get_all_repositories, get_repo_count_by_scope
+from aquasec import get_repo_count, get_all_repositories, get_repo_count_by_scope, api_delete_repo
 
 # Get total repository count
 total_repos = get_repo_count(server, token, verbose=True)
@@ -230,6 +230,11 @@ all_repos = get_all_repositories(server, token, registry='myregistry', verbose=T
 
 # Get repository count by multiple scopes
 repo_counts = get_repo_count_by_scope(server, token, ['prod', 'staging'], verbose=True)
+
+# Delete a specific repository
+response = api_delete_repo(server, token, 'myregistry', 'myrepo', verbose=True)
+if response.status_code in [200, 202, 204]:
+    print("Repository deleted successfully")
 ```
 
 ## Production-Ready Examples
@@ -253,6 +258,13 @@ Utility for extracting VM inventory data with advanced filtering capabilities.
 - Comprehensive VM inventory extraction
 - Filter by coverage, cloud provider, region, risk level
 - Memory-efficient streaming for large datasets
+
+### 🗑️ [Repository Delete Utility](examples/repo-delete-utility/)
+Safety-first tool for bulk deletion of image repositories.
+- Dry-run mode by default, requires `--apply` flag for actual deletions
+- Multiple filtering options (registry, host-images, empty-only)
+- Clean table output with status indicators and progress tracking
+- Comprehensive safety features and error handling
 
 **Getting Started with Examples:**
 ```bash

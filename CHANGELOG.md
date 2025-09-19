@@ -5,6 +5,32 @@ All notable changes to the aquasec library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2024-09-19
+
+### Added
+- **NEW**: Repository deletion functionality
+  - `api_delete_repo()`: Delete individual repositories via DELETE API endpoint
+  - Support for HTTP 202 (Accepted) async deletion responses
+  - Proper error handling and status code validation
+- **NEW**: Repository Delete Utility example (`examples/repo-delete-utility/`)
+  - Safety-first bulk repository deletion tool with dry-run by default
+  - Requires explicit `--apply` flag for actual deletions
+  - Multiple filtering options: `--registry`, `--host-images`, `--empty-only`
+  - Clean table-formatted output with status indicators (✓/✗)
+  - Comprehensive test suite (10 tests) and full documentation
+  - Profile-based authentication and configuration management
+
+### Enhanced
+- Repository module now supports both read and delete operations
+- Consistent error handling and verbose output across all repository functions
+- Updated library exports to include new deletion functionality
+
+### Technical Details
+- `api_delete_repo()` uses `/api/v2/repositories/{registry}/{name}` endpoint
+- Repository Delete Utility follows same patterns as other production examples
+- All deletion operations include proper authentication and error handling
+- Table output provides clear visual feedback for bulk operations
+
 ## [0.5.1] - 2025-09-16
 
 ### Fixed
