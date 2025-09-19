@@ -21,6 +21,7 @@ jobs:
       license-utility-changed: ${{ steps.changes.outputs.license-utility }}
       repo-breakdown-changed: ${{ steps.changes.outputs.repo-breakdown }}
       vm-extract-changed: ${{ steps.changes.outputs.vm-extract }}
+      repo-delete-utility-changed: ${{ steps.changes.outputs.repo-delete-utility }}
       dependencies-changed: ${{ steps.changes.outputs.dependencies }}
     steps:
     - uses: actions/checkout@v4
@@ -39,6 +40,8 @@ jobs:
             - 'examples/repo-breakdown/**'
           vm-extract:
             - 'examples/vm-extract/**'
+          repo-delete-utility:
+            - 'examples/repo-delete-utility/**'
           dependencies:
             - '**/requirements*.txt'
             - 'setup.py'
@@ -187,6 +190,42 @@ jobs:
         sarif_file: 'trivy-vm-extract.sarif'
         category: 'vm-extract'
 
+  security-scan-repo-delete-utility:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.repo-delete-utility-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    name: Security Scan - Repo Delete Utility
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner on repo delete utility
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: 'examples/repo-delete-utility/'
+        format: 'table'
+        exit-code: '1'
+        severity: 'CRITICAL,HIGH'
+        ignore-unfixed: true
+
+    - name: Run Trivy vulnerability scanner for SARIF (Repo Delete Utility)
+      uses: aquasecurity/trivy-action@master
+      if: always()
+      with:
+        scan-type: 'fs'
+        scan-ref: 'examples/repo-delete-utility/'
+        format: 'sarif'
+        output: 'trivy-repo-delete-utility.sarif'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+        ignore-unfixed: true
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-repo-delete-utility.sarif'
+        category: 'repo-delete-utility'
+
   dependency-check:
     needs: detect-changes
     if: needs.detect-changes.outputs.dependencies-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -218,7 +257,11 @@ jobs:
     - name: Check vm-extract dependencies
       if: needs.detect-changes.outputs.vm-extract-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
       run: safety check -r examples/vm-extract/requirements.txt --json --output safety-vm-extract.json || true
-    
+
+    - name: Check repo-delete-utility dependencies
+      if: needs.detect-changes.outputs.repo-delete-utility-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      run: safety check -r examples/repo-delete-utility/requirements.txt --json --output safety-repo-delete-utility.json || true
+
     - name: Upload safety results
       uses: actions/upload-artifact@v4
       if: always()

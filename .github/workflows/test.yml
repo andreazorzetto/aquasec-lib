@@ -21,6 +21,7 @@ jobs:
       license-utility-changed: ${{ steps.changes.outputs.license-utility }}
       repo-breakdown-changed: ${{ steps.changes.outputs.repo-breakdown }}
       vm-extract-changed: ${{ steps.changes.outputs.vm-extract }}
+      repo-delete-utility-changed: ${{ steps.changes.outputs.repo-delete-utility }}
       any-example-changed: ${{ steps.changes.outputs.any-example }}
     steps:
     - uses: actions/checkout@v4
@@ -40,6 +41,8 @@ jobs:
             - 'examples/repo-breakdown/**'
           vm-extract:
             - 'examples/vm-extract/**'
+          repo-delete-utility:
+            - 'examples/repo-delete-utility/**'
           any-example:
             - 'examples/**'
 
@@ -189,3 +192,40 @@ jobs:
       run: |
         cd examples/vm-extract
         python aqua_vm_extract.py --help
+
+  test-repo-delete-utility:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.repo-delete-utility-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install library in development mode
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+
+    - name: Install example dependencies
+      run: |
+        cd examples/repo-delete-utility
+        pip install -r requirements.txt
+        pip install -r requirements-test.txt
+
+    - name: Run repo delete utility tests
+      run: |
+        cd examples/repo-delete-utility
+        python -m pytest tests/ -v --tb=short
+
+    - name: Test repo delete utility CLI
+      run: |
+        cd examples/repo-delete-utility
+        python aqua_repo_delete.py --help
