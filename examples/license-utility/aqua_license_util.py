@@ -260,7 +260,9 @@ def license_count(server, token, verbose=False, debug=False):
         print(json.dumps(utilization, indent=2))
 
 
-def license_breakdown(server, token, verbose=False, debug=False, csv_file=None, json_file=None, skip_repos=False):
+def license_breakdown(server, token, verbose=False, debug=False, csv_file=None, json_file=None, skip_repos=False,
+                    only_images=False, only_code=False, only_enforcers=False,
+                    skip_images=False, skip_code=False, skip_enforcers=False, include_global=False):
     """Provide license usage breakdown per application scope"""
     # get the license information
     licenses = get_licences(server, token, debug)
@@ -284,13 +286,68 @@ def license_breakdown(server, token, verbose=False, debug=False, csv_file=None, 
     for scope in scopes_result:
         scopes_list.append(scope["name"])
     if debug:
-        print("DEBUG: Scopes:", scopes_list, "\n")
+        print("DEBUG: All scopes:", scopes_list, "\n")
 
-    # get the count of scopes per repo
-    if skip_repos:
-        repo_count_by_scope = {scope: 0 for scope in scopes_list}
+    # Filter Global scope unless --include-global flag is set
+    if not include_global and "Global" in scopes_list:
+        scopes_list.remove("Global")
         if verbose:
-            print("Skipping repository counting...")
+            print("Excluding 'Global' scope from processing (use --include-global to include)")
+        if debug:
+            print("DEBUG: Global scope filtered out\n")
+
+    if debug:
+        print("DEBUG: Final scopes to process:", scopes_list, "\n")
+
+    # Determine which asset types to process based on flags
+    process_images = True
+    process_code = True
+    process_enforcers = True
+
+    # Handle --only-* flags
+    if only_images:
+        process_code = False
+        process_enforcers = False
+        if verbose:
+            print("Asset filtering: Only scanning container image repositories")
+    elif only_code:
+        process_images = False
+        process_enforcers = False
+        if verbose:
+            print("Asset filtering: Only scanning code repositories")
+    elif only_enforcers:
+        process_images = False
+        process_code = False
+        if verbose:
+            print("Asset filtering: Only scanning enforcers")
+
+    # Handle --skip-* flags
+    if skip_images:
+        process_images = False
+        if verbose:
+            print("Asset filtering: Skipping container image repositories")
+    if skip_code:
+        process_code = False
+        if verbose:
+            print("Asset filtering: Skipping code repositories")
+    if skip_enforcers:
+        process_enforcers = False
+        if verbose:
+            print("Asset filtering: Skipping enforcers")
+
+    # Handle legacy --skip-repos flag (overrides everything else for backward compatibility)
+    if skip_repos:
+        process_images = False
+        process_code = False
+        if verbose:
+            print("Skipping all repository counting (legacy mode)...")
+
+    if debug:
+        print(f"DEBUG: Asset processing flags - Images: {process_images}, Code: {process_code}, Enforcers: {process_enforcers}\n")
+
+    # get the count of scopes per repo (container image repositories)
+    if not process_images:
+        repo_count_by_scope = {scope: 0 for scope in scopes_list}
         if debug:
             print("DEBUG: Repo count by scope: Skipped\n")
     else:
@@ -299,12 +356,17 @@ def license_breakdown(server, token, verbose=False, debug=False, csv_file=None, 
             print("DEBUG: Repo count by scope:", json.dumps(repo_count_by_scope), "\n")
 
     # get enforcers count by scope
-    enforcer_count_by_scope = get_enforcer_count_by_scope(server, token, scopes_list, debug)
-    if debug:
-        print("DEBUG: Enforcer count by scope:", json.dumps(enforcer_count_by_scope), "\n")
+    if not process_enforcers:
+        enforcer_count_by_scope = {scope: {"kube_enforcers": 0, "vm_enforcers": 0, "micro_enforcers": 0, "nano_enforcers": 0, "pod_enforcers": 0} for scope in scopes_list}
+        if debug:
+            print("DEBUG: Enforcer count by scope: Skipped\n")
+    else:
+        enforcer_count_by_scope = get_enforcer_count_by_scope(server, token, scopes_list, debug)
+        if debug:
+            print("DEBUG: Enforcer count by scope:", json.dumps(enforcer_count_by_scope), "\n")
 
     # get code repositories count by scope
-    if skip_repos:
+    if not process_code:
         code_repo_count_by_scope = {scope: 0 for scope in scopes_list}
         if debug:
             print("DEBUG: Code repo count by scope: Skipped\n")
@@ -341,23 +403,37 @@ def license_breakdown(server, token, verbose=False, debug=False, csv_file=None, 
             print(f"License breakdown exported to JSON: {json_file}")
 
     if verbose:
-        # Human-readable table format
+        # Human-readable table format with dynamic columns based on processed asset types
         table = PrettyTable()
-        table.field_names = ["Scope", "Images", "Code", "Agents",
-                            "Kube", "Host", "Micro", "Nano", "Pod"]
-        
+
+        # Build field names based on what was processed
+        field_names = ["Scope"]
+        if process_images:
+            field_names.append("Images")
+        if process_code:
+            field_names.append("Code")
+        if process_enforcers:
+            field_names.extend(["Agents", "Kube", "Host", "Micro", "Nano", "Pod"])
+
+        table.field_names = field_names
+
         for scope, details in breakdown_data.items():
-            row = [details["scope name"],
-                    details["repos"],
-                    details.get("code_repos", 0),
+            row = [details["scope name"]]
+            if process_images:
+                row.append(details["repos"])
+            if process_code:
+                row.append(details.get("code_repos", 0))
+            if process_enforcers:
+                row.extend([
                     details["agent"],
                     details["kube_enforcer"],
                     details["host_enforcer"],
                     details["micro_enforcer"],
                     details["nano_enforcer"],
-                    details["pod_enforcer"]]
+                    details["pod_enforcer"]
+                ])
             table.add_row(row)
-        
+
         print(table)
     else:
         # JSON output by default
@@ -459,7 +535,25 @@ def main():
                                 help='Export to JSON file')
     license_breakdown_parser.add_argument('--skip-repos', dest='skip_repos', action='store_true',
                                 help='Skip image and code repository counting (faster, enforcers only)')
-    
+
+    # Asset type filtering arguments
+    license_breakdown_parser.add_argument('--only-images', dest='only_images', action='store_true',
+                                help='Only scan container image repositories (skip code repos & enforcers)')
+    license_breakdown_parser.add_argument('--only-code', dest='only_code', action='store_true',
+                                help='Only scan code repositories (skip image repos & enforcers)')
+    license_breakdown_parser.add_argument('--only-enforcers', dest='only_enforcers', action='store_true',
+                                help='Only scan enforcers (skip all repositories)')
+    license_breakdown_parser.add_argument('--skip-images', dest='skip_images', action='store_true',
+                                help='Skip container image repositories (keep code repos & enforcers)')
+    license_breakdown_parser.add_argument('--skip-code', dest='skip_code', action='store_true',
+                                help='Skip code repositories (keep image repos & enforcers)')
+    license_breakdown_parser.add_argument('--skip-enforcers', dest='skip_enforcers', action='store_true',
+                                help='Skip enforcer scanning (keep all repositories)')
+
+    # Global scope filtering
+    license_breakdown_parser.add_argument('--include-global', dest='include_global', action='store_true',
+                                help='Include Global scope in processing (default: excluded to avoid overload)')
+
     # Parse the filtered arguments
     args = parser.parse_args(filtered_args)
     
@@ -641,9 +735,31 @@ def main():
         elif args.command == 'license' and args.license_command == 'breakdown':
             if args.debug:
                 print(f"DEBUG: Using CSP endpoint for license API: {csp_endpoint}")
-            
-            license_breakdown(csp_endpoint, token, args.verbose, args.debug, 
-                            args.csv_file, args.json_file, args.skip_repos)
+
+            # Validate asset type filtering flags
+            only_flags = [args.only_images, args.only_code, args.only_enforcers]
+            skip_flags = [args.skip_images, args.skip_code, args.skip_enforcers]
+
+            # Check for conflicting --only flags
+            if sum(only_flags) > 1:
+                print("Error: Cannot use multiple --only-* flags together")
+                sys.exit(1)
+
+            # Check for conflicts between --only and --skip flags
+            if any(only_flags) and any(skip_flags):
+                print("Error: Cannot use --only-* and --skip-* flags together")
+                sys.exit(1)
+
+            # Check for conflict with --skip-repos
+            if args.skip_repos and any(only_flags + skip_flags):
+                print("Error: Cannot use --skip-repos with other asset filtering flags")
+                sys.exit(1)
+
+            license_breakdown(csp_endpoint, token, args.verbose, args.debug,
+                            args.csv_file, args.json_file, args.skip_repos,
+                            args.only_images, args.only_code, args.only_enforcers,
+                            args.skip_images, args.skip_code, args.skip_enforcers,
+                            args.include_global)
     except KeyboardInterrupt:
         if args.verbose:
             print('\nExecution interrupted by user')
