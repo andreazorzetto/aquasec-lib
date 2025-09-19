@@ -41,3 +41,6 @@ Thumbs.db
 *.csv
 *.json
 !requirements.txt
+
+# Test files (temporary)
+test_*.py
