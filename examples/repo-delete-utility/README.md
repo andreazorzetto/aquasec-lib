@@ -12,8 +12,20 @@ A focused tool for bulk deletion of image repositories from Aqua Security platfo
 
 ## Installation
 
+Using a virtual environment ensures dependencies are isolated and installed for the correct Python version:
+
 ```bash
 cd examples/repo-delete-utility
+
+# Create virtual environment
+python3 -m venv .venv
+
+# Activate virtual environment
+source .venv/bin/activate  # On Linux/Mac
+# OR
+.venv\Scripts\activate     # On Windows
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
