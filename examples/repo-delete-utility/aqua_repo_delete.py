@@ -305,7 +305,7 @@ def main():
     # Handle setup command
     if args.command == 'setup':
         try:
-            interactive_setup(verbose=args.verbose)
+            interactive_setup(debug=args.debug)
         except KeyboardInterrupt:
             if args.verbose:
                 print('\nSetup cancelled by user')
