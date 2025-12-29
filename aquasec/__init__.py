@@ -5,7 +5,7 @@ This library provides a clean API interface for interacting with Aqua Security's
 platform, extracted from the andreactl tool.
 """
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 from .auth import (
     authenticate,
@@ -65,6 +65,16 @@ from .vms import (
     filter_vms_by_cloud_provider,
     filter_vms_by_region,
     filter_vms_by_risk_level
+)
+
+from .inventory import (
+    api_get_inventory_images,
+    api_get_inventory_images_count,
+    api_delete_images,
+    get_all_stale_images,
+    get_stale_images_count,
+    filter_images_by_registry,
+    filter_images_by_repository
 )
 
 from .common import (
@@ -140,7 +150,16 @@ __all__ = [
     'filter_vms_by_cloud_provider',
     'filter_vms_by_region',
     'filter_vms_by_risk_level',
-    
+
+    # Inventory (Hub images)
+    'api_get_inventory_images',
+    'api_get_inventory_images_count',
+    'api_delete_images',
+    'get_all_stale_images',
+    'get_stale_images_count',
+    'filter_images_by_registry',
+    'filter_images_by_repository',
+
     # Common utilities
     'write_content_to_file',
     'write_json_to_file',

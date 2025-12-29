@@ -6,7 +6,7 @@ This directory contains production-ready example implementations demonstrating h
 
 First, ensure you have the aquasec library installed:
 ```bash
-pip install aquasec>=0.5.0
+pip install aquasec>=0.6.0
 ```
 
 Or install the latest development version from this repository:
@@ -88,6 +88,60 @@ python aqua_vm_extract.py vm list --no-enforcer
 python aqua_vm_extract.py vm list --export-csv vm_inventory.csv
 ```
 
+### 4. Repository Delete Utility (`repo-delete-utility/`)
+A safety-first command-line tool for bulk deletion of image repositories from Aqua Security platform.
+
+**Features:**
+- Dry-run mode by default, requires `--apply` flag for actual deletions
+- Multiple filtering options (registry, host-images, empty-only)
+- Clean table output with status indicators and progress tracking
+- Comprehensive safety features and error handling
+- Profile-based authentication with interactive setup
+
+**Quick Start:**
+```bash
+cd examples/repo-delete-utility
+pip install -r requirements.txt
+
+# Setup credentials (shared with other utilities)
+python aqua_repo_delete.py setup
+
+# Dry-run to preview deletions
+python aqua_repo_delete.py delete --registry myregistry
+
+# Apply actual deletions
+python aqua_repo_delete.py delete --registry myregistry --apply
+```
+
+### 5. Image Delete Utility (`image-delete-utility/`)
+A safety-first command-line tool for bulk deletion of stale images from Aqua Security Hub inventory.
+
+**Features:**
+- Dry-run mode by default, requires `--apply` flag for actual deletions
+- Delete images registered more than X days ago (configurable, default 90)
+- Filter for images without running containers (workloads)
+- Filter by registry or scope
+- Per-page batch deletion (200 images per API call)
+- Profile-based authentication with interactive setup
+
+**Quick Start:**
+```bash
+cd examples/image-delete-utility
+pip install -r requirements.txt
+
+# Setup credentials (shared with other utilities)
+python aqua_image_delete.py setup
+
+# Dry-run to preview deletions (90 days, no workloads)
+python aqua_image_delete.py images delete
+
+# Custom age threshold
+python aqua_image_delete.py images delete --days 180
+
+# Apply actual deletions
+python aqua_image_delete.py images delete --apply
+```
+
 ## Common Usage Patterns
 
 These examples demonstrate several key patterns for using the aquasec library:
@@ -102,8 +156,10 @@ These examples demonstrate several key patterns for using the aquasec library:
 
 These examples were previously maintained as separate repositories:
 - **license-utility**: Formerly at `github.com/andreazorzetto/aquasec-license-util`
-- **repo-breakdown**: Formerly at `github.com/andreazorzetto/aquasec-repo-breakdown` 
+- **repo-breakdown**: Formerly at `github.com/andreazorzetto/aquasec-repo-breakdown`
 - **vm-extract**: Formerly at `github.com/andreazorzetto/aquasec-vm-extract`
+- **repo-delete-utility**: New utility added in v0.6.0
+- **image-delete-utility**: New utility added in v0.6.0
 
 The standalone repositories now contain redirect notices pointing to this consolidated location.
 
