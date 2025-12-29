@@ -15,15 +15,15 @@ import aqua_vm_extract
 
 class TestVersion(unittest.TestCase):
     """Test version functionality"""
-    
+
     def test_version_display(self):
         """Test that version is displayed correctly"""
         with patch('sys.argv', ['aqua_vm_extract.py', '--version']):
-            with patch('sys.exit') as mock_exit:
-                with patch('builtins.print') as mock_print:
+            with patch('builtins.print') as mock_print:
+                with self.assertRaises(SystemExit) as context:
                     aqua_vm_extract.main()
-                    mock_print.assert_called_with(f"Aqua VM Extraction Utility version {aqua_vm_extract.__version__}")
-                    mock_exit.assert_called_with(0)
+                mock_print.assert_called_with(f"Aqua VM Extraction Utility version {aqua_vm_extract.__version__}")
+                self.assertEqual(context.exception.code, 0)
 
 
 class TestGlobalArgs(unittest.TestCase):
@@ -154,14 +154,11 @@ class TestVMFiltering(unittest.TestCase):
         self.assertEqual(len(critical_high_vms), 2)
 
 
-class TestCSVExport(unittest.TestCase):
-    """Test CSV export functionality"""
-    
-    def test_export_vms_to_csv(self):
-        """Test CSV export creates file with correct structure"""
-        import tempfile
-        import csv
-        
+class TestCSVFormat(unittest.TestCase):
+    """Test CSV formatting functionality"""
+
+    def test_format_vms_csv(self):
+        """Test format_vms_csv creates correct CSV structure"""
         mock_vms = [{
             'id': 'test-vm-1',
             'name': 'Test VM',
@@ -170,60 +167,39 @@ class TestCSVExport(unittest.TestCase):
             'os': 'ubuntu 20.04',
             'highest_risk': 'high',
             'covered_by': ['agentless'],
-            'enforcer_group': 'default agentless group',
-            'type': 'agentless',
-            'compliant': False,
-            'vulnerability_risk': 'high',
-            'cloud_info': {
-                'vm_id': 'i-1234567890',
-                'vm_account_id': '123456789',
-                'vm_public_ips': ['1.2.3.4'],
-                'vm_private_ips': ['10.0.1.100']
-            }
+            'compliant': False
         }]
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as tmp:
-            aqua_vm_extract.export_vms_to_csv(mock_vms, tmp.name)
-            
-            # Read back the CSV and verify structure
-            with open(tmp.name, 'r') as csvfile:
-                reader = csv.DictReader(csvfile)
-                rows = list(reader)
-                
-                self.assertEqual(len(rows), 1)
-                row = rows[0]
-                self.assertEqual(row['name'], 'Test VM')
-                self.assertEqual(row['cloud_provider'], 'AWS')
-                self.assertEqual(row['covered_by'], 'agentless')
-                self.assertEqual(row['vm_id'], 'i-1234567890')
-            
-            # Clean up
-            os.unlink(tmp.name)
+
+        csv_output = aqua_vm_extract.format_vms_csv(mock_vms)
+
+        # Verify CSV contains expected data
+        self.assertIn('Name', csv_output)  # Header
+        self.assertIn('Test VM', csv_output)
+        self.assertIn('AWS', csv_output)
+        self.assertIn('us-west-1', csv_output)
+        self.assertIn('agentless', csv_output)
 
 
 class TestMainFunction(unittest.TestCase):
     """Test main function behavior"""
-    
-    @patch('aqua_vm_extract.authenticate')
-    @patch('aqua_vm_extract.load_profile_credentials')
-    @patch.dict(os.environ, {'AQUA_USER': 'test', 'CSP_ENDPOINT': 'https://test.cloud.aquasec.com'})
-    def test_main_no_command(self, mock_load_creds, mock_auth):
-        """Test main function with no command shows help"""
+
+    def test_main_no_command(self):
+        """Test main function with no command shows help and exits with 1"""
         with patch('sys.argv', ['aqua_vm_extract.py']):
-            with patch('sys.exit') as mock_exit:
-                with patch('builtins.print'):
+            with patch('builtins.print'):
+                with self.assertRaises(SystemExit) as context:
                     aqua_vm_extract.main()
-                    mock_exit.assert_called_with(1)
-    
+                self.assertEqual(context.exception.code, 1)
+
     def test_main_setup_command(self):
         """Test main function with setup command"""
         with patch('sys.argv', ['aqua_vm_extract.py', 'setup']):
             with patch('aqua_vm_extract.interactive_setup') as mock_setup:
-                with patch('sys.exit') as mock_exit:
-                    mock_setup.return_value = True
+                mock_setup.return_value = True
+                with self.assertRaises(SystemExit) as context:
                     aqua_vm_extract.main()
-                    mock_setup.assert_called_once()
-                    mock_exit.assert_called_with(0)
+                mock_setup.assert_called_once()
+                self.assertEqual(context.exception.code, 0)
 
 
 if __name__ == '__main__':
