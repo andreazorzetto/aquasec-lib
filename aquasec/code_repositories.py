@@ -213,7 +213,7 @@ def get_all_code_repositories(server, token, scope=None, verbose=False):
         total = data.get("total_count", 0)
 
         # Stop if no next page or we've collected all repos
-        if not next_page or len(all_repos) >= total or len(repos) < page_size:
+        if not next_page or len(all_repos) >= total:
             break
             
         page += 1
