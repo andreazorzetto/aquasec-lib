@@ -13,43 +13,48 @@ on:
 
 permissions:
   id-token: write  # Required for trusted publishing
+  contents: read
+  security-events: write  # Required for security workflow
 
 jobs:
+  # Run tests first
+  run-tests:
+    uses: ./.github/workflows/test.yml
+
+  # Run security scans
+  run-security:
+    uses: ./.github/workflows/security.yml
+
+  # Build and publish only after tests and security pass
   build-and-publish:
+    needs: [run-tests, run-security]
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install build twine
-        pip install -r requirements.txt
-    
-    - name: Run tests
-      run: |
-        # Add your test command here when you have tests
-        # python -m pytest tests/
-        echo "No tests configured yet"
-    
+
     - name: Build package
       run: python -m build
-    
+
     - name: Check package
       run: twine check dist/*
-    
+
     - name: Publish to Test PyPI
       if: github.event.inputs.test_pypi == 'true'
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         repository-url: https://test.pypi.org/legacy/
-    
+
     - name: Publish to PyPI
       if: github.event_name == 'release' && github.event.inputs.test_pypi != 'true'
       uses: pypa/gh-action-pypi-publish@release/v1

@@ -8,20 +8,24 @@ on:
   schedule:
     - cron: '0 3 * * 1'  # Run every Monday at 3 AM UTC
   workflow_dispatch:  # Allow manual triggering
+  workflow_call:  # Allow calling from other workflows
 
 permissions:
   contents: read
   security-events: write
 
 jobs:
+  # On push to main, schedule, dispatch, or workflow_call - run ALL scans
+  # On PR - use path filtering
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      library-changed: ${{ steps.changes.outputs.library }}
+      run-all: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' }}
       license-utility-changed: ${{ steps.changes.outputs.license-utility }}
       repo-breakdown-changed: ${{ steps.changes.outputs.repo-breakdown }}
       vm-extract-changed: ${{ steps.changes.outputs.vm-extract }}
       repo-delete-utility-changed: ${{ steps.changes.outputs.repo-delete-utility }}
+      image-delete-utility-changed: ${{ steps.changes.outputs.image-delete-utility }}
       dependencies-changed: ${{ steps.changes.outputs.dependencies }}
     steps:
     - uses: actions/checkout@v4
@@ -29,11 +33,6 @@ jobs:
       id: changes
       with:
         filters: |
-          library:
-            - 'aquasec/**'
-            - 'setup.py'
-            - 'requirements.txt'
-            - 'MANIFEST.in'
           license-utility:
             - 'examples/license-utility/**'
           repo-breakdown:
@@ -42,18 +41,19 @@ jobs:
             - 'examples/vm-extract/**'
           repo-delete-utility:
             - 'examples/repo-delete-utility/**'
+          image-delete-utility:
+            - 'examples/image-delete-utility/**'
           dependencies:
             - '**/requirements*.txt'
             - 'setup.py'
 
   security-scan-library:
     needs: detect-changes
-    if: needs.detect-changes.outputs.library-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     name: Security Scan - Library
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Run Trivy vulnerability scanner on library
       uses: aquasecurity/trivy-action@master
       with:
@@ -63,7 +63,7 @@ jobs:
         exit-code: '1'
         severity: 'CRITICAL,HIGH'
         ignore-unfixed: true
-    
+
     - name: Run Trivy vulnerability scanner for SARIF (Library)
       uses: aquasecurity/trivy-action@master
       if: always()
@@ -74,7 +74,7 @@ jobs:
         output: 'trivy-library.sarif'
         severity: 'CRITICAL,HIGH,MEDIUM'
         ignore-unfixed: true
-    
+
     - name: Upload Trivy scan results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
       if: always()
@@ -84,12 +84,12 @@ jobs:
 
   security-scan-license-utility:
     needs: detect-changes
-    if: needs.detect-changes.outputs.license-utility-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.license-utility-changed == 'true'
     runs-on: ubuntu-latest
     name: Security Scan - License Utility
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Run Trivy vulnerability scanner on license utility
       uses: aquasecurity/trivy-action@master
       with:
@@ -99,7 +99,7 @@ jobs:
         exit-code: '1'
         severity: 'CRITICAL,HIGH'
         ignore-unfixed: true
-    
+
     - name: Run Trivy vulnerability scanner for SARIF (License Utility)
       uses: aquasecurity/trivy-action@master
       if: always()
@@ -110,7 +110,7 @@ jobs:
         output: 'trivy-license-utility.sarif'
         severity: 'CRITICAL,HIGH,MEDIUM'
         ignore-unfixed: true
-    
+
     - name: Upload Trivy scan results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
       if: always()
@@ -120,12 +120,12 @@ jobs:
 
   security-scan-repo-breakdown:
     needs: detect-changes
-    if: needs.detect-changes.outputs.repo-breakdown-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.repo-breakdown-changed == 'true'
     runs-on: ubuntu-latest
     name: Security Scan - Repo Breakdown
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Run Trivy vulnerability scanner on repo breakdown
       uses: aquasecurity/trivy-action@master
       with:
@@ -135,7 +135,7 @@ jobs:
         exit-code: '1'
         severity: 'CRITICAL,HIGH'
         ignore-unfixed: true
-    
+
     - name: Run Trivy vulnerability scanner for SARIF (Repo Breakdown)
       uses: aquasecurity/trivy-action@master
       if: always()
@@ -146,7 +146,7 @@ jobs:
         output: 'trivy-repo-breakdown.sarif'
         severity: 'CRITICAL,HIGH,MEDIUM'
         ignore-unfixed: true
-    
+
     - name: Upload Trivy scan results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
       if: always()
@@ -156,12 +156,12 @@ jobs:
 
   security-scan-vm-extract:
     needs: detect-changes
-    if: needs.detect-changes.outputs.vm-extract-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.vm-extract-changed == 'true'
     runs-on: ubuntu-latest
     name: Security Scan - VM Extract
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Run Trivy vulnerability scanner on vm extract
       uses: aquasecurity/trivy-action@master
       with:
@@ -171,7 +171,7 @@ jobs:
         exit-code: '1'
         severity: 'CRITICAL,HIGH'
         ignore-unfixed: true
-    
+
     - name: Run Trivy vulnerability scanner for SARIF (VM Extract)
       uses: aquasecurity/trivy-action@master
       if: always()
@@ -182,7 +182,7 @@ jobs:
         output: 'trivy-vm-extract.sarif'
         severity: 'CRITICAL,HIGH,MEDIUM'
         ignore-unfixed: true
-    
+
     - name: Upload Trivy scan results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
       if: always()
@@ -192,7 +192,7 @@ jobs:
 
   security-scan-repo-delete-utility:
     needs: detect-changes
-    if: needs.detect-changes.outputs.repo-delete-utility-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.repo-delete-utility-changed == 'true'
     runs-on: ubuntu-latest
     name: Security Scan - Repo Delete Utility
     steps:
@@ -226,41 +226,79 @@ jobs:
         sarif_file: 'trivy-repo-delete-utility.sarif'
         category: 'repo-delete-utility'
 
+  security-scan-image-delete-utility:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.image-delete-utility-changed == 'true'
+    runs-on: ubuntu-latest
+    name: Security Scan - Image Delete Utility
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner on image delete utility
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: 'examples/image-delete-utility/'
+        format: 'table'
+        exit-code: '1'
+        severity: 'CRITICAL,HIGH'
+        ignore-unfixed: true
+
+    - name: Run Trivy vulnerability scanner for SARIF (Image Delete Utility)
+      uses: aquasecurity/trivy-action@master
+      if: always()
+      with:
+        scan-type: 'fs'
+        scan-ref: 'examples/image-delete-utility/'
+        format: 'sarif'
+        output: 'trivy-image-delete-utility.sarif'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+        ignore-unfixed: true
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-image-delete-utility.sarif'
+        category: 'image-delete-utility'
+
   dependency-check:
     needs: detect-changes
-    if: needs.detect-changes.outputs.dependencies-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     name: Dependency Vulnerability Check
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
-    
+
     - name: Install safety
       run: pip install safety
-    
+
     - name: Check library dependencies
-      if: needs.detect-changes.outputs.library-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
       run: safety check -r requirements.txt --json --output safety-library.json || true
-    
+
     - name: Check license-utility dependencies
-      if: needs.detect-changes.outputs.license-utility-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.license-utility-changed == 'true'
       run: safety check -r examples/license-utility/requirements.txt --json --output safety-license-utility.json || true
-    
+
     - name: Check repo-breakdown dependencies
-      if: needs.detect-changes.outputs.repo-breakdown-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.repo-breakdown-changed == 'true'
       run: safety check -r examples/repo-breakdown/requirements.txt --json --output safety-repo-breakdown.json || true
-    
+
     - name: Check vm-extract dependencies
-      if: needs.detect-changes.outputs.vm-extract-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.vm-extract-changed == 'true'
       run: safety check -r examples/vm-extract/requirements.txt --json --output safety-vm-extract.json || true
 
     - name: Check repo-delete-utility dependencies
-      if: needs.detect-changes.outputs.repo-delete-utility-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.repo-delete-utility-changed == 'true'
       run: safety check -r examples/repo-delete-utility/requirements.txt --json --output safety-repo-delete-utility.json || true
+
+    - name: Check image-delete-utility dependencies
+      if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.image-delete-utility-changed == 'true'
+      run: safety check -r examples/image-delete-utility/requirements.txt --json --output safety-image-delete-utility.json || true
 
     - name: Upload safety results
       uses: actions/upload-artifact@v4

@@ -8,75 +8,69 @@ on:
   schedule:
     - cron: '0 2 * * 1'  # Run every Monday at 2 AM UTC
   workflow_dispatch:  # Allow manual triggering
+  workflow_call:  # Allow calling from other workflows
 
 permissions:
   contents: read
-  security-events: write  # Required for uploading SARIF results
 
 jobs:
+  # Path detection only used for PRs - on main push we run everything
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      library-changed: ${{ steps.changes.outputs.library }}
+      run-all: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' }}
       license-utility-changed: ${{ steps.changes.outputs.license-utility }}
       repo-breakdown-changed: ${{ steps.changes.outputs.repo-breakdown }}
       vm-extract-changed: ${{ steps.changes.outputs.vm-extract }}
       repo-delete-utility-changed: ${{ steps.changes.outputs.repo-delete-utility }}
       image-delete-utility-changed: ${{ steps.changes.outputs.image-delete-utility }}
-      any-example-changed: ${{ steps.changes.outputs.any-example }}
     steps:
     - uses: actions/checkout@v4
     - uses: dorny/paths-filter@v2
       id: changes
       with:
         filters: |
-          library:
-            - 'aquasec/**'
-            - 'setup.py'
-            - 'requirements.txt'
-            - 'MANIFEST.in'
-            - '.github/workflows/**'
           license-utility:
             - 'examples/license-utility/**'
+            - 'aquasec/**'
           repo-breakdown:
             - 'examples/repo-breakdown/**'
+            - 'aquasec/**'
           vm-extract:
             - 'examples/vm-extract/**'
+            - 'aquasec/**'
           repo-delete-utility:
             - 'examples/repo-delete-utility/**'
+            - 'aquasec/**'
           image-delete-utility:
             - 'examples/image-delete-utility/**'
-          any-example:
-            - 'examples/**'
+            - 'aquasec/**'
 
   test-library:
     needs: detect-changes
-    if: needs.detect-changes.outputs.library-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ['3.8', '3.9', '3.10', '3.11']
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pytest pytest-cov
-    
+
     - name: Run library tests
       run: |
-        # When you add tests, uncomment this line
-        # python -m pytest tests/ --cov=aqua --cov-report=xml
-        echo "No tests configured yet"
-    
+        python -m pytest tests/ -v --tb=short
+
     - name: Upload coverage reports
       if: matrix.python-version == '3.9'
       uses: codecov/codecov-action@v3
@@ -84,39 +78,38 @@ jobs:
         file: ./coverage.xml
         fail_ci_if_error: false
 
-
   test-license-utility:
     needs: detect-changes
-    if: needs.detect-changes.outputs.license-utility-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.license-utility-changed == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ['3.8', '3.9', '3.10', '3.11']
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-    
+
     - name: Install library in development mode
       run: |
         python -m pip install --upgrade pip
         pip install -e .
-    
+
     - name: Install example dependencies
       run: |
         cd examples/license-utility
         pip install -r requirements.txt
         pip install -r requirements-test.txt
-    
+
     - name: Run license utility tests
       run: |
         cd examples/license-utility
         python -m pytest tests/ -v --tb=short
-    
+
     - name: Test license utility CLI
       run: |
         cd examples/license-utility
@@ -124,36 +117,36 @@ jobs:
 
   test-repo-breakdown:
     needs: detect-changes
-    if: needs.detect-changes.outputs.repo-breakdown-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.repo-breakdown-changed == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ['3.8', '3.9', '3.10', '3.11']
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-    
+
     - name: Install library in development mode
       run: |
         python -m pip install --upgrade pip
         pip install -e .
-    
+
     - name: Install example dependencies
       run: |
         cd examples/repo-breakdown
         pip install -r requirements.txt
         pip install -r requirements-test.txt
-    
+
     - name: Run repo breakdown tests
       run: |
         cd examples/repo-breakdown
         python -m pytest tests/ -v --tb=short
-    
+
     - name: Test repo breakdown CLI
       run: |
         cd examples/repo-breakdown
@@ -161,36 +154,36 @@ jobs:
 
   test-vm-extract:
     needs: detect-changes
-    if: needs.detect-changes.outputs.vm-extract-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.vm-extract-changed == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ['3.8', '3.9', '3.10', '3.11']
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-    
+
     - name: Install library in development mode
       run: |
         python -m pip install --upgrade pip
         pip install -e .
-    
+
     - name: Install example dependencies
       run: |
         cd examples/vm-extract
         pip install -r requirements.txt
         pip install -r requirements-test.txt
-    
+
     - name: Run vm extract tests
       run: |
         cd examples/vm-extract
         python -m pytest tests/ -v --tb=short --continue-on-collection-errors
-    
+
     - name: Test vm extract CLI
       run: |
         cd examples/vm-extract
@@ -198,7 +191,7 @@ jobs:
 
   test-repo-delete-utility:
     needs: detect-changes
-    if: needs.detect-changes.outputs.repo-delete-utility-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.repo-delete-utility-changed == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -235,7 +228,7 @@ jobs:
 
   test-image-delete-utility:
     needs: detect-changes
-    if: needs.detect-changes.outputs.image-delete-utility-changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.image-delete-utility-changed == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
