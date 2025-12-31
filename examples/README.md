@@ -113,33 +113,33 @@ python aqua_repo_delete.py delete --registry myregistry
 python aqua_repo_delete.py delete --registry myregistry --apply
 ```
 
-### 5. Image Delete Utility (`image-delete-utility/`)
-A safety-first command-line tool for bulk deletion of stale images from Aqua Security Hub inventory.
+### 5. Image Cleanup Utility (`image-cleanup-utility/`)
+Clean up stale images from Aqua Security Hub inventory.
 
 **Features:**
-- Dry-run mode by default, requires `--apply` flag for actual deletions
-- Delete images registered more than X days ago (configurable, default 90)
-- Filter for images without running containers (workloads)
+- Dry-run mode by default, requires `--apply` flag for actual cleanup
+- Remove images older than X days (configurable, default 90)
+- Only targets images without running workloads
 - Filter by registry or scope
-- Per-page batch deletion (200 images per API call)
+- Per-page batch processing (200 images per API call)
 - Profile-based authentication with interactive setup
 
 **Quick Start:**
 ```bash
-cd examples/image-delete-utility
+cd examples/image-cleanup-utility
 pip install -r requirements.txt
 
 # Setup credentials (shared with other utilities)
-python aqua_image_delete.py setup
+python aqua_image_cleanup.py setup
 
-# Dry-run to preview deletions (90 days, no workloads)
-python aqua_image_delete.py images delete
+# Dry-run to preview cleanup (90 days, no workloads)
+python aqua_image_cleanup.py images cleanup
 
 # Custom age threshold
-python aqua_image_delete.py images delete --days 180
+python aqua_image_cleanup.py images cleanup --days 180
 
-# Apply actual deletions
-python aqua_image_delete.py images delete --apply
+# Apply actual cleanup
+python aqua_image_cleanup.py images cleanup --apply
 ```
 
 ## Common Usage Patterns
@@ -159,7 +159,7 @@ These examples were previously maintained as separate repositories:
 - **repo-breakdown**: Formerly at `github.com/andreazorzetto/aquasec-repo-breakdown`
 - **vm-extract**: Formerly at `github.com/andreazorzetto/aquasec-vm-extract`
 - **repo-delete-utility**: New utility added in v0.6.0
-- **image-delete-utility**: New utility added in v0.6.0
+- **image-cleanup-utility**: New utility added in v0.6.0
 
 The standalone repositories now contain redirect notices pointing to this consolidated location.
 

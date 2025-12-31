@@ -1,4 +1,4 @@
-"""Integration tests for image delete functionality"""
+"""Integration tests for image cleanup functionality"""
 import sys
 import os
 import pytest
@@ -8,13 +8,13 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import the main script
-import aqua_image_delete
+import aqua_image_cleanup
 
 
-class TestImagesDelete:
-    """Test image delete functionality"""
+class TestImagesCleanup:
+    """Test image cleanup functionality"""
 
-    def test_images_delete_dry_run_mode(self):
+    def test_images_cleanup_dry_run_mode(self):
         """Test dry run mode (default behavior)"""
         # Mock API responses
         mock_get_response = Mock()
@@ -33,9 +33,9 @@ class TestImagesDelete:
         mock_empty_response.status_code = 200
         mock_empty_response.json.return_value = {"result": [], "count": 3}
 
-        with patch('aqua_image_delete.api_get_inventory_images', side_effect=[mock_get_response, mock_empty_response]):
+        with patch('aqua_image_cleanup.api_get_inventory_images', side_effect=[mock_get_response, mock_empty_response]):
             with patch('builtins.print') as mock_print:
-                aqua_image_delete.images_delete(
+                aqua_image_cleanup.images_cleanup(
                     server="https://test.aquasec.com",
                     token="test-token",
                     days=90,
@@ -58,7 +58,7 @@ class TestImagesDelete:
                 assert result["summary"]["images_failed"] == 0
                 assert len(result["deletions"]) == 3
 
-    def test_images_delete_with_registry_filter(self):
+    def test_images_cleanup_with_registry_filter(self):
         """Test registry filter is passed to API (server-side filtering)"""
         # Mock response simulates server-side filtering - only docker.io images returned
         mock_get_response = Mock()
@@ -75,9 +75,9 @@ class TestImagesDelete:
         mock_empty_response.status_code = 200
         mock_empty_response.json.return_value = {"result": [], "count": 2}
 
-        with patch('aqua_image_delete.api_get_inventory_images', side_effect=[mock_get_response, mock_empty_response]) as mock_get:
+        with patch('aqua_image_cleanup.api_get_inventory_images', side_effect=[mock_get_response, mock_empty_response]) as mock_get:
             with patch('builtins.print') as mock_print:
-                aqua_image_delete.images_delete(
+                aqua_image_cleanup.images_cleanup(
                     server="https://test.aquasec.com",
                     token="test-token",
                     days=90,
@@ -104,7 +104,7 @@ class TestImagesDelete:
                 for deletion in result["deletions"]:
                     assert deletion["registry"] == "docker.io"
 
-    def test_images_delete_apply_mode(self):
+    def test_images_cleanup_apply_mode(self):
         """Test apply mode (actual deletions)"""
         mock_get_response = Mock()
         mock_get_response.status_code = 200
@@ -123,10 +123,10 @@ class TestImagesDelete:
         mock_delete_response = Mock()
         mock_delete_response.status_code = 200
 
-        with patch('aqua_image_delete.api_get_inventory_images', side_effect=[mock_get_response, mock_empty_response]):
-            with patch('aqua_image_delete.api_delete_images', return_value=mock_delete_response) as mock_delete:
+        with patch('aqua_image_cleanup.api_get_inventory_images', side_effect=[mock_get_response, mock_empty_response]):
+            with patch('aqua_image_cleanup.api_delete_images', return_value=mock_delete_response) as mock_delete:
                 with patch('builtins.print') as mock_print:
-                    aqua_image_delete.images_delete(
+                    aqua_image_cleanup.images_cleanup(
                         server="https://test.aquasec.com",
                         token="test-token",
                         days=90,
@@ -152,10 +152,10 @@ class TestImagesDelete:
                     result = json.loads(args)
 
                     assert result["mode"] == "apply"
-                    assert result["summary"]["images_deleted"] == 2
+                    assert result["summary"]["images_cleanupd"] == 2
                     assert result["summary"]["images_failed"] == 0
 
-    def test_images_delete_with_failures(self):
+    def test_images_cleanup_with_failures(self):
         """Test handling of deletion failures"""
         mock_get_response = Mock()
         mock_get_response.status_code = 200
@@ -176,10 +176,10 @@ class TestImagesDelete:
         mock_delete_response.status_code = 403
         mock_delete_response.text = "Forbidden"
 
-        with patch('aqua_image_delete.api_get_inventory_images', side_effect=[mock_get_response, mock_empty_response]):
-            with patch('aqua_image_delete.api_delete_images', return_value=mock_delete_response):
+        with patch('aqua_image_cleanup.api_get_inventory_images', side_effect=[mock_get_response, mock_empty_response]):
+            with patch('aqua_image_cleanup.api_delete_images', return_value=mock_delete_response):
                 with patch('builtins.print') as mock_print:
-                    aqua_image_delete.images_delete(
+                    aqua_image_cleanup.images_cleanup(
                         server="https://test.aquasec.com",
                         token="test-token",
                         days=90,
@@ -197,12 +197,12 @@ class TestImagesDelete:
                     result = json.loads(args)
 
                     assert result["mode"] == "apply"
-                    assert result["summary"]["images_deleted"] == 0
+                    assert result["summary"]["images_cleanupd"] == 0
                     assert result["summary"]["images_failed"] == 2
                     assert "failures" in result
                     assert len(result["failures"]) == 2
 
-    def test_images_delete_pagination(self):
+    def test_images_cleanup_pagination(self):
         """Test pagination handling with per-page batching"""
         # Page 1: 200 images
         page1_response = Mock()
@@ -234,10 +234,10 @@ class TestImagesDelete:
         mock_delete_response = Mock()
         mock_delete_response.status_code = 200
 
-        with patch('aqua_image_delete.api_get_inventory_images', side_effect=[page1_response, page2_response, empty_response]):
-            with patch('aqua_image_delete.api_delete_images', return_value=mock_delete_response) as mock_delete:
+        with patch('aqua_image_cleanup.api_get_inventory_images', side_effect=[page1_response, page2_response, empty_response]):
+            with patch('aqua_image_cleanup.api_delete_images', return_value=mock_delete_response) as mock_delete:
                 with patch('builtins.print') as mock_print:
-                    aqua_image_delete.images_delete(
+                    aqua_image_cleanup.images_cleanup(
                         server="https://test.aquasec.com",
                         token="test-token",
                         days=90,
@@ -267,17 +267,17 @@ class TestImagesDelete:
                     result = json.loads(args)
 
                     assert result["summary"]["images_scanned"] == 250
-                    assert result["summary"]["images_deleted"] == 250
+                    assert result["summary"]["images_cleanupd"] == 250
 
-    def test_images_delete_custom_days(self):
+    def test_images_cleanup_custom_days(self):
         """Test custom days threshold"""
         mock_get_response = Mock()
         mock_get_response.status_code = 200
         mock_get_response.json.return_value = {"result": [], "count": 0}
 
-        with patch('aqua_image_delete.api_get_inventory_images', return_value=mock_get_response) as mock_get:
+        with patch('aqua_image_cleanup.api_get_inventory_images', return_value=mock_get_response) as mock_get:
             with patch('builtins.print'):
-                aqua_image_delete.images_delete(
+                aqua_image_cleanup.images_cleanup(
                     server="https://test.aquasec.com",
                     token="test-token",
                     days=180,
@@ -292,15 +292,15 @@ class TestImagesDelete:
                 call_args = mock_get.call_args
                 assert call_args[1]['first_found_date'] == "over|180|days"
 
-    def test_images_delete_with_scope(self):
+    def test_images_cleanup_with_scope(self):
         """Test scope filter is passed to API"""
         mock_get_response = Mock()
         mock_get_response.status_code = 200
         mock_get_response.json.return_value = {"result": [], "count": 0}
 
-        with patch('aqua_image_delete.api_get_inventory_images', return_value=mock_get_response) as mock_get:
+        with patch('aqua_image_cleanup.api_get_inventory_images', return_value=mock_get_response) as mock_get:
             with patch('builtins.print'):
-                aqua_image_delete.images_delete(
+                aqua_image_cleanup.images_cleanup(
                     server="https://test.aquasec.com",
                     token="test-token",
                     days=90,
@@ -314,16 +314,16 @@ class TestImagesDelete:
                 call_args = mock_get.call_args
                 assert call_args[1]['scope'] == "production"
 
-    def test_images_delete_api_error(self):
+    def test_images_cleanup_api_error(self):
         """Test API error handling"""
         mock_get_response = Mock()
         mock_get_response.status_code = 401
         mock_get_response.text = "Unauthorized"
 
-        with patch('aqua_image_delete.api_get_inventory_images', return_value=mock_get_response):
+        with patch('aqua_image_cleanup.api_get_inventory_images', return_value=mock_get_response):
             with pytest.raises(SystemExit):
                 with patch('builtins.print'):
-                    aqua_image_delete.images_delete(
+                    aqua_image_cleanup.images_cleanup(
                         server="https://test.aquasec.com",
                         token="invalid-token",
                         days=90,
@@ -334,7 +334,7 @@ class TestImagesDelete:
                         debug=False
                     )
 
-    def test_images_delete_skips_images_without_uid(self):
+    def test_images_cleanup_skips_images_without_uid(self):
         """Test images without UID are skipped"""
         mock_get_response = Mock()
         mock_get_response.status_code = 200
@@ -351,9 +351,9 @@ class TestImagesDelete:
         mock_empty_response.status_code = 200
         mock_empty_response.json.return_value = {"result": [], "count": 3}
 
-        with patch('aqua_image_delete.api_get_inventory_images', side_effect=[mock_get_response, mock_empty_response]):
+        with patch('aqua_image_cleanup.api_get_inventory_images', side_effect=[mock_get_response, mock_empty_response]):
             with patch('builtins.print') as mock_print:
-                aqua_image_delete.images_delete(
+                aqua_image_cleanup.images_cleanup(
                     server="https://test.aquasec.com",
                     token="test-token",
                     days=90,
@@ -384,9 +384,9 @@ class TestFiltersOutput:
         mock_get_response.status_code = 200
         mock_get_response.json.return_value = {"result": [], "count": 0}
 
-        with patch('aqua_image_delete.api_get_inventory_images', return_value=mock_get_response):
+        with patch('aqua_image_cleanup.api_get_inventory_images', return_value=mock_get_response):
             with patch('builtins.print') as mock_print:
-                aqua_image_delete.images_delete(
+                aqua_image_cleanup.images_cleanup(
                     server="https://test.aquasec.com",
                     token="test-token",
                     days=120,

@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
 """
-Aqua Image Delete Utility
-A focused tool for bulk deletion of stale images from Aqua Security platform
+Aqua Image Cleanup Utility
+Clean up stale images from Aqua Security Hub inventory
 
 Usage:
-    python aqua_image_delete.py setup                           # Interactive setup
-    python aqua_image_delete.py images delete                   # List what would be deleted (dry-run mode)
-    python aqua_image_delete.py images delete --apply           # Actually delete images
-    python aqua_image_delete.py images delete --days 180        # Custom age threshold
-    python aqua_image_delete.py images delete --registry NAME   # Filter by registry name
-    python aqua_image_delete.py images delete --scope NAME      # Filter by scope
+    python aqua_image_cleanup.py setup                           # Interactive setup
+    python aqua_image_cleanup.py images cleanup                  # Preview cleanup (dry-run mode)
+    python aqua_image_cleanup.py images cleanup --apply          # Actually remove images
+    python aqua_image_cleanup.py images cleanup --days 180       # Custom age threshold
+    python aqua_image_cleanup.py images cleanup --registry NAME  # Filter by registry name
+    python aqua_image_cleanup.py images cleanup --scope NAME     # Filter by scope
 """
 
 import argparse
 import json
 import sys
 import os
-from prettytable import PrettyTable
 
 # Import from aquasec library
 from aquasec import (
@@ -24,7 +23,6 @@ from aquasec import (
     load_profile_credentials,
     interactive_setup,
     list_profiles,
-    ConfigManager,
     get_profile_info,
     get_all_profiles_info,
     format_profile_info,
@@ -40,26 +38,30 @@ from aquasec import (
 __version__ = "0.1.0"
 
 
-def images_delete(server, token, days=90, registry=None, scope=None, apply=False, verbose=False, debug=False):
-    """Delete stale images with safety-first approach using per-page batching"""
+def images_cleanup(server, token, days=90, registry=None, scope=None, apply=False, verbose=False, debug=False):
+    """Clean up stale images with safety-first approach using per-page batching"""
 
     deleted_count = 0
     total_count = 0
     failed_count = 0
     deletions = []
     failures = []
-    verbose_items = []
 
     page = 1
     page_size = 200
     first_found_date = f"over|{days}|days"
 
     if debug:
-        print(f"DEBUG: Starting image deletion - days={days}, registry={registry}, scope={scope}, apply={apply}")
+        print(f"DEBUG: Starting image cleanup - days={days}, registry={registry}, scope={scope}, apply={apply}")
+
+    # Print header for real-time output in verbose mode
+    if verbose:
+        header = "Removing images:" if apply else "Images that would be removed:"
+        print(f"\n{header}")
 
     while True:
         if debug:
-            print(f"DEBUG: Fetching page {page} with size {page_size}")
+            print(f"DEBUG: Fetching page {page} with page_size={page_size}")
 
         res = api_get_inventory_images(
             server, token,
@@ -87,6 +89,9 @@ def images_delete(server, token, days=90, registry=None, scope=None, apply=False
             break
 
         total_count += len(images)
+
+        if verbose:
+            print(f"  Processing page {page} ({len(images)} images)...")
 
         # Collect UIDs for this batch
         batch_uids = []
@@ -118,7 +123,7 @@ def images_delete(server, token, days=90, registry=None, scope=None, apply=False
         if apply and batch_uids:
             # Actually delete this batch
             if debug:
-                print(f"DEBUG: Deleting batch of {len(batch_uids)} images")
+                print(f"DEBUG: Calling POST /api/v2/images/actions/delete with {len(batch_uids)} UIDs")
 
             delete_res = api_delete_images(server, token, batch_uids, verbose=debug)
 
@@ -128,7 +133,7 @@ def images_delete(server, token, days=90, registry=None, scope=None, apply=False
                 if verbose:
                     for img_info in batch_images:
                         display_name = f"{img_info['registry']}/{img_info['repository']}:{img_info['tag']}"
-                        verbose_items.append(("✓", display_name, img_info['image_uid']))
+                        print(f"    ✓ {display_name}")
             else:
                 failed_count += len(batch_uids)
                 error_text = f"HTTP {delete_res.status_code}: {delete_res.text}"
@@ -139,7 +144,7 @@ def images_delete(server, token, days=90, registry=None, scope=None, apply=False
                 if verbose:
                     for img_info in batch_images:
                         display_name = f"{img_info['registry']}/{img_info['repository']}:{img_info['tag']}"
-                        verbose_items.append(("✗", display_name, f"Error: {error_text}"))
+                        print(f"    ✗ {display_name} - {error_text}")
         else:
             # Dry run mode - just record what would be deleted
             deleted_count += len(batch_uids)
@@ -147,7 +152,7 @@ def images_delete(server, token, days=90, registry=None, scope=None, apply=False
             if verbose:
                 for img_info in batch_images:
                     display_name = f"{img_info['registry']}/{img_info['repository']}:{img_info['tag']}"
-                    verbose_items.append(("", display_name, img_info['image_uid']))
+                    print(f"    - {display_name}")
 
         page += 1
 
@@ -172,55 +177,28 @@ def images_delete(server, token, days=90, registry=None, scope=None, apply=False
         result["failures"] = failures
 
     if verbose:
-        # Show images table first
-        if verbose_items:
-            img_table = PrettyTable(["Status", "Image", "UID"])
-            img_table.align["Status"] = "c"
-            img_table.align["Image"] = "l"
-            img_table.align["UID"] = "l"
-
-            header_text = "\nDeleting images:" if apply else "\nImages that would be deleted:"
-            print(header_text)
-
-            for status, img_name, uid in verbose_items:
-                img_table.add_row([status, img_name, uid])
-
-            print(img_table)
-
-        # Show summary table
-        table = PrettyTable(["Metric", "Count"])
-        table.align["Metric"] = "l"
-        table.align["Count"] = "r"
-
-        table.add_row(["Images Scanned", total_count])
-        table.add_row(["Images " + ("Deleted" if apply else "To Delete"), deleted_count])
+        # Show summary
+        print(f"\nSummary:")
+        print(f"  Images scanned: {total_count}")
+        print(f"  Images {'removed' if apply else 'to remove'}: {deleted_count}")
         if apply and failed_count > 0:
-            table.add_row(["Images Failed", failed_count])
-
-        print("\nSummary:")
-        print(table)
+            print(f"  Images failed: {failed_count}")
 
         # Show filters applied
-        print("\nFilters Applied:")
-        filter_table = PrettyTable(["Filter", "Value"])
-        filter_table.align["Filter"] = "l"
-        filter_table.align["Value"] = "l"
-
-        filter_table.add_row(["Age Threshold", f">{days} days"])
-        filter_table.add_row(["Has Workloads", "No"])
+        print(f"\nFilters: age >{days} days, has_workloads=false", end="")
         if registry:
-            filter_table.add_row(["Registry", registry])
+            print(f", registry={registry}", end="")
         if scope:
-            filter_table.add_row(["Scope", scope])
-
-        print(filter_table)
+            print(f", scope={scope}", end="")
+        print()
 
         # Show status
-        mode_status = "APPLIED - Images were actually deleted!" if apply else "DRY RUN - No images were actually deleted"
-        print(f"\nMode: {mode_status}")
-
-        if not apply and deleted_count > 0:
-            print("Use --apply flag to actually perform the deletions.")
+        if apply:
+            print(f"\nMode: APPLIED - Images were actually removed!")
+        else:
+            print(f"\nMode: DRY RUN - No images were actually removed")
+            if deleted_count > 0:
+                print("Use --apply flag to actually perform the cleanup.")
     else:
         # JSON output
         print(json.dumps(result, indent=2))
@@ -256,8 +234,8 @@ def main():
 
     # Now parse with the filtered args
     parser = argparse.ArgumentParser(
-        description='Aqua Image Delete Utility - Bulk delete stale images from Aqua Security platform',
-        prog='aqua_image_delete',
+        description='Aqua Image Cleanup Utility - Clean up stale images from Aqua Security Hub inventory',
+        prog='aqua_image_cleanup',
         epilog='Global options can be placed before or after the command:\n'
                '  -v, --verbose        Show human-readable output instead of JSON\n'
                '  -d, --debug          Show debug output including API calls\n'
@@ -302,15 +280,15 @@ def main():
     images_parser = subparsers.add_parser('images', help='Image management commands')
     images_subparsers = images_parser.add_subparsers(dest='images_command', help='Image commands', required=True)
 
-    # Delete subcommand
-    delete_parser = images_subparsers.add_parser('delete', help='Delete stale images (dry-run by default)')
-    delete_parser.add_argument('--apply', action='store_true',
-                              help='Actually perform deletions (default is dry-run mode)')
-    delete_parser.add_argument('--days', type=int, default=90,
+    # Cleanup subcommand
+    cleanup_parser = images_subparsers.add_parser('cleanup', help='Clean up stale images (dry-run by default)')
+    cleanup_parser.add_argument('--apply', action='store_true',
+                              help='Actually perform cleanup (default is dry-run mode)')
+    cleanup_parser.add_argument('--days', type=int, default=90,
                               help='Age threshold in days (default: 90)')
-    delete_parser.add_argument('--registry',
+    cleanup_parser.add_argument('--registry',
                               help='Filter by registry name')
-    delete_parser.add_argument('--scope',
+    cleanup_parser.add_argument('--scope',
                               help='Filter by scope name')
 
     # Parse arguments
@@ -438,17 +416,17 @@ def main():
 
     # Execute commands
     try:
-        if args.command == 'images' and args.images_command == 'delete':
+        if args.command == 'images' and args.images_command == 'cleanup':
             if args.debug:
                 print(f"DEBUG: Using CSP endpoint: {csp_endpoint}")
 
-            images_delete(csp_endpoint, token,
-                         days=args.days,
-                         registry=args.registry,
-                         scope=args.scope,
-                         apply=args.apply,
-                         verbose=args.verbose,
-                         debug=args.debug)
+            images_cleanup(csp_endpoint, token,
+                          days=args.days,
+                          registry=args.registry,
+                          scope=args.scope,
+                          apply=args.apply,
+                          verbose=args.verbose,
+                          debug=args.debug)
     except KeyboardInterrupt:
         if args.verbose:
             print('\nExecution interrupted by user')
@@ -466,7 +444,7 @@ def main():
 if __name__ == '__main__':
     # Check for required dependencies
     try:
-        from cryptography.fernet import Fernet
+        import cryptography  # noqa: F401
     except ImportError:
         print("Missing required dependency: cryptography")
         print("Install with: pip install cryptography")

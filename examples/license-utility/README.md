@@ -15,27 +15,16 @@ A command-line tool for extracting and analyzing license utilization data from A
 
 ## Installation
 
-### From source
-
 ```bash
-git clone https://github.com/andreazorzetto/aquasec-license-util.git
-cd aquasec-license-util
-
-# Optionally create a Python virtual environment
+# Create and activate a virtual environment
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### Prerequisites
-
-- **Authentication**: This utility requires username/password authentication to connect to Aqua Security platform
-- **Python library**: The `aquasec` library must be installed:
-
-```bash
-pip install aquasec
-```
+**Note**: This utility requires username/password authentication to connect to Aqua Security platform.
 
 ## Quick Start
 
@@ -190,7 +179,3 @@ fi
 ## License
 
 MIT License
-
-## Contributing
-
-Issues and pull requests are welcome at [github.com/andreazorzetto/aquasec-license-util](https://github.com/andreazorzetto/aquasec-license-util)

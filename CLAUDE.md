@@ -27,7 +27,7 @@ cd examples/license-utility && python -m pytest tests/ -v --tb=short
 cd examples/repo-breakdown && python -m pytest tests/ -v --tb=short
 cd examples/vm-extract && python -m pytest tests/ -v --tb=short
 cd examples/repo-delete-utility && python -m pytest tests/ -v --tb=short
-cd examples/image-delete-utility && python -m pytest tests/ -v --tb=short
+cd examples/image-cleanup-utility && python -m pytest tests/ -v --tb=short
 ```
 
 ### Build & Distribution
@@ -46,7 +46,7 @@ cd examples/license-utility && python aqua_license_util.py --help
 cd examples/repo-breakdown && python aqua_repo_breakdown.py --help
 cd examples/vm-extract && python aqua_vm_extract.py --help
 cd examples/repo-delete-utility && python aqua_repo_delete.py --help
-cd examples/image-delete-utility && python aqua_image_delete.py --help
+cd examples/image-cleanup-utility && python aqua_image_cleanup.py --help
 ```
 
 ## Library Architecture
@@ -90,7 +90,7 @@ The `examples/` directory contains five production-ready utilities demonstrating
 2. **repo-breakdown/**: Repository scope analysis and orphan detection
 3. **vm-extract/**: VM inventory extraction with advanced filtering
 4. **repo-delete-utility/**: Bulk repository deletion with safety features
-5. **image-delete-utility/**: Bulk stale image deletion from Hub inventory
+5. **image-cleanup-utility/**: Stale image cleanup from Hub inventory
 
 Each example includes:
 - Comprehensive CLI interface with argparse

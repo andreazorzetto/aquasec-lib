@@ -23,7 +23,7 @@ jobs:
       repo-breakdown-changed: ${{ steps.changes.outputs.repo-breakdown }}
       vm-extract-changed: ${{ steps.changes.outputs.vm-extract }}
       repo-delete-utility-changed: ${{ steps.changes.outputs.repo-delete-utility }}
-      image-delete-utility-changed: ${{ steps.changes.outputs.image-delete-utility }}
+      image-cleanup-utility-changed: ${{ steps.changes.outputs.image-cleanup-utility }}
     steps:
     - uses: actions/checkout@v4
     - uses: dorny/paths-filter@v2
@@ -42,8 +42,8 @@ jobs:
           repo-delete-utility:
             - 'examples/repo-delete-utility/**'
             - 'aquasec/**'
-          image-delete-utility:
-            - 'examples/image-delete-utility/**'
+          image-cleanup-utility:
+            - 'examples/image-cleanup-utility/**'
             - 'aquasec/**'
 
   test-library:
@@ -226,9 +226,9 @@ jobs:
         cd examples/repo-delete-utility
         python aqua_repo_delete.py --help
 
-  test-image-delete-utility:
+  test-image-cleanup-utility:
     needs: detect-changes
-    if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.image-delete-utility-changed == 'true'
+    if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.image-cleanup-utility-changed == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -249,16 +249,16 @@ jobs:
 
     - name: Install example dependencies
       run: |
-        cd examples/image-delete-utility
+        cd examples/image-cleanup-utility
         pip install -r requirements.txt
         pip install -r requirements-test.txt
 
     - name: Run image delete utility tests
       run: |
-        cd examples/image-delete-utility
+        cd examples/image-cleanup-utility
         python -m pytest tests/ -v --tb=short
 
     - name: Test image delete utility CLI
       run: |
-        cd examples/image-delete-utility
-        python aqua_image_delete.py --help
+        cd examples/image-cleanup-utility
+        python aqua_image_cleanup.py --help
