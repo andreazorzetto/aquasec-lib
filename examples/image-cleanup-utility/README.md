@@ -1,6 +1,6 @@
 # Aqua Image Cleanup Utility
 
-Clean up stale images from Aqua Security Hub inventory. **Dry-run by default** - requires `--apply` to actually remove images.
+Clean up stale images from Aqua Security inventory. **Dry-run by default** - requires `--apply` to actually remove images.
 
 Images are considered stale when they are:
 - Older than N days (default: 90)
@@ -20,9 +20,14 @@ pip install -r requirements.txt
 ## Quick Start
 
 ```bash
-python aqua_image_cleanup.py setup               # Configure credentials
-python aqua_image_cleanup.py images cleanup -v   # Preview cleanup (dry-run)
-python aqua_image_cleanup.py images cleanup --apply  # Actually remove images
+# Configure credentials
+python aqua_image_cleanup.py setup
+
+# Preview cleanup (dry-run)
+python aqua_image_cleanup.py images cleanup -v
+
+# Actually remove images
+python aqua_image_cleanup.py images cleanup --apply
 ```
 
 ## Usage
