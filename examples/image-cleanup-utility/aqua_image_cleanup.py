@@ -154,7 +154,10 @@ def images_cleanup(server, token, days=90, registry=None, scope=None, apply=Fals
                     display_name = f"{img_info['registry']}/{img_info['repository']}:{img_info['tag']}"
                     print(f"    - {display_name}")
 
-        page += 1
+        # In apply mode, stay on page 1 since deletions shift the list
+        # In dry-run mode, paginate normally
+        if not apply:
+            page += 1
 
     # Prepare output
     result = {
