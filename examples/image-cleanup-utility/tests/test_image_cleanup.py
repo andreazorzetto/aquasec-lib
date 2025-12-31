@@ -152,7 +152,7 @@ class TestImagesCleanup:
                     result = json.loads(args)
 
                     assert result["mode"] == "apply"
-                    assert result["summary"]["images_cleanupd"] == 2
+                    assert result["summary"]["images_deleted"] == 2
                     assert result["summary"]["images_failed"] == 0
 
     def test_images_cleanup_with_failures(self):
@@ -197,7 +197,7 @@ class TestImagesCleanup:
                     result = json.loads(args)
 
                     assert result["mode"] == "apply"
-                    assert result["summary"]["images_cleanupd"] == 0
+                    assert result["summary"]["images_deleted"] == 0
                     assert result["summary"]["images_failed"] == 2
                     assert "failures" in result
                     assert len(result["failures"]) == 2
@@ -267,7 +267,7 @@ class TestImagesCleanup:
                     result = json.loads(args)
 
                     assert result["summary"]["images_scanned"] == 250
-                    assert result["summary"]["images_cleanupd"] == 250
+                    assert result["summary"]["images_deleted"] == 250
 
     def test_images_cleanup_custom_days(self):
         """Test custom days threshold"""
