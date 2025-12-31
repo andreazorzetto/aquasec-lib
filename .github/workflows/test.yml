@@ -253,12 +253,12 @@ jobs:
         pip install -r requirements.txt
         pip install -r requirements-test.txt
 
-    - name: Run image delete utility tests
+    - name: Run image cleanup utility tests
       run: |
         cd examples/image-cleanup-utility
         python -m pytest tests/ -v --tb=short
 
-    - name: Test image delete utility CLI
+    - name: Test image cleanup utility CLI
       run: |
         cd examples/image-cleanup-utility
         python aqua_image_cleanup.py --help

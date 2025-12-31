@@ -230,11 +230,11 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.image-cleanup-utility-changed == 'true'
     runs-on: ubuntu-latest
-    name: Security Scan - Image Delete Utility
+    name: Security Scan - Image Cleanup Utility
     steps:
     - uses: actions/checkout@v4
 
-    - name: Run Trivy vulnerability scanner on image delete utility
+    - name: Run Trivy vulnerability scanner on image cleanup utility
       uses: aquasecurity/trivy-action@master
       with:
         scan-type: 'fs'
@@ -244,7 +244,7 @@ jobs:
         severity: 'CRITICAL,HIGH'
         ignore-unfixed: true
 
-    - name: Run Trivy vulnerability scanner for SARIF (Image Delete Utility)
+    - name: Run Trivy vulnerability scanner for SARIF (Image Cleanup Utility)
       uses: aquasecurity/trivy-action@master
       if: always()
       with:
