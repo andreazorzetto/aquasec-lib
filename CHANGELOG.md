@@ -5,6 +5,27 @@ All notable changes to the aquasec library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2025-01-20
+
+### Fixed
+- **AUTH**: Added 10-second timeout to all authentication API requests
+  - Prevents hanging on unresponsive servers
+  - Affects `api_auth()`, `user_pass_saas_auth()`, and `user_pass_onprem_auth()`
+
+### Enhanced
+- **Image Cleanup Utility**: Added file-based bulk deletion mode
+  - New `--file` argument to read image list from CSV file (bypasses slow API inventory extraction)
+  - New `--batch-size` argument to control deletion batch size (default: 200)
+  - CSV format: `image_id,image_name,registry_id,created`
+  - Enables processing of 1M+ images from database queries
+  - Integer conversion for image IDs (API expects int64)
+  - Comprehensive test coverage for new functionality (9 new tests)
+
+### Technical Details
+- Auth timeouts apply to all three authentication methods (API key, SaaS user/pass, on-prem user/pass)
+- File-based cleanup uses same batching logic as API-based cleanup
+- Safe to re-run on same file (idempotent - already-deleted images return success)
+
 ## [0.6.0] - 2024-09-19
 
 ### Added

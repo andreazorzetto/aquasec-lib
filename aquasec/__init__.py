@@ -5,7 +5,7 @@ This library provides a clean API interface for interacting with Aqua Security's
 platform, extracted from the andreactl tool.
 """
 
-__version__ = "0.7.1"
+__version__ = "0.7.2"
 
 from .auth import (
     authenticate,

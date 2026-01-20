@@ -375,6 +375,300 @@ class TestImagesCleanup:
                 assert len(result["deletions"]) == 2
 
 
+class TestFileBasedCleanup:
+    """Test file-based image cleanup functionality"""
+
+    def test_file_cleanup_dry_run_mode(self, tmp_path):
+        """Test dry run mode with CSV file"""
+        # Create test CSV file
+        csv_file = tmp_path / "test_images.csv"
+        csv_file.write_text(
+            '"image_id","image_name","registry_id","created"\n'
+            '1001,repo/image1:v1,my_registry,2025-01-01 10:00:00\n'
+            '1002,repo/image2:v2,my_registry,2025-01-01 10:00:00\n'
+            '1003,repo/image3:latest,my_registry,2025-01-01 10:00:00\n'
+        )
+
+        with patch('builtins.print') as mock_print:
+            aqua_image_cleanup.images_cleanup_from_file(
+                server="https://test.aquasec.com",
+                token="test-token",
+                file_path=str(csv_file),
+                batch_size=200,
+                apply=False,
+                verbose=False,
+                debug=False
+            )
+
+            mock_print.assert_called_once()
+            args = mock_print.call_args[0][0]
+
+            import json
+            result = json.loads(args)
+
+            assert result["mode"] == "dry_run"
+            assert result["source"] == "file"
+            assert result["summary"]["images_scanned"] == 3
+            assert result["summary"]["images_would_delete"] == 3
+            assert len(result["deletions"]) == 3
+
+    def test_file_cleanup_apply_mode(self, tmp_path):
+        """Test apply mode with CSV file"""
+        csv_file = tmp_path / "test_images.csv"
+        csv_file.write_text(
+            '"image_id","image_name","registry_id","created"\n'
+            '1001,repo/image1:v1,my_registry,2025-01-01 10:00:00\n'
+            '1002,repo/image2:v2,my_registry,2025-01-01 10:00:00\n'
+        )
+
+        mock_delete_response = Mock()
+        mock_delete_response.status_code = 200
+
+        with patch('aqua_image_cleanup.api_delete_images', return_value=mock_delete_response) as mock_delete:
+            with patch('builtins.print') as mock_print:
+                aqua_image_cleanup.images_cleanup_from_file(
+                    server="https://test.aquasec.com",
+                    token="test-token",
+                    file_path=str(csv_file),
+                    batch_size=200,
+                    apply=True,
+                    verbose=False,
+                    debug=False
+                )
+
+                # Verify delete API was called with integer IDs
+                mock_delete.assert_called_once()
+                call_args = mock_delete.call_args
+                assert call_args[0][0] == "https://test.aquasec.com"
+                assert call_args[0][1] == "test-token"
+                assert set(call_args[0][2]) == {1001, 1002}  # Integer IDs
+
+                mock_print.assert_called_once()
+                args = mock_print.call_args[0][0]
+
+                import json
+                result = json.loads(args)
+
+                assert result["mode"] == "apply"
+                assert result["summary"]["images_deleted"] == 2
+                assert result["summary"]["images_failed"] == 0
+
+    def test_file_cleanup_batching(self, tmp_path):
+        """Test batching with custom batch size"""
+        # Create CSV with 5 images
+        csv_content = '"image_id","image_name","registry_id","created"\n'
+        for i in range(1, 6):
+            csv_content += f'{1000+i},repo/image{i}:v{i},my_registry,2025-01-01 10:00:00\n'
+
+        csv_file = tmp_path / "test_images.csv"
+        csv_file.write_text(csv_content)
+
+        mock_delete_response = Mock()
+        mock_delete_response.status_code = 200
+
+        with patch('aqua_image_cleanup.api_delete_images', return_value=mock_delete_response) as mock_delete:
+            with patch('builtins.print'):
+                aqua_image_cleanup.images_cleanup_from_file(
+                    server="https://test.aquasec.com",
+                    token="test-token",
+                    file_path=str(csv_file),
+                    batch_size=2,  # Small batch size to test batching
+                    apply=True,
+                    verbose=False,
+                    debug=False
+                )
+
+                # Should be called 3 times: 2 + 2 + 1
+                assert mock_delete.call_count == 3
+
+                # First batch: 2 IDs
+                first_call_ids = mock_delete.call_args_list[0][0][2]
+                assert len(first_call_ids) == 2
+
+                # Second batch: 2 IDs
+                second_call_ids = mock_delete.call_args_list[1][0][2]
+                assert len(second_call_ids) == 2
+
+                # Third batch: 1 ID
+                third_call_ids = mock_delete.call_args_list[2][0][2]
+                assert len(third_call_ids) == 1
+
+    def test_file_cleanup_with_failures(self, tmp_path):
+        """Test handling of deletion failures"""
+        csv_file = tmp_path / "test_images.csv"
+        csv_file.write_text(
+            '"image_id","image_name","registry_id","created"\n'
+            '1001,repo/image1:v1,my_registry,2025-01-01 10:00:00\n'
+            '1002,repo/image2:v2,my_registry,2025-01-01 10:00:00\n'
+        )
+
+        mock_delete_response = Mock()
+        mock_delete_response.status_code = 403
+        mock_delete_response.text = "Forbidden"
+
+        with patch('aqua_image_cleanup.api_delete_images', return_value=mock_delete_response):
+            with patch('builtins.print') as mock_print:
+                aqua_image_cleanup.images_cleanup_from_file(
+                    server="https://test.aquasec.com",
+                    token="test-token",
+                    file_path=str(csv_file),
+                    batch_size=200,
+                    apply=True,
+                    verbose=False,
+                    debug=False
+                )
+
+                mock_print.assert_called_once()
+                args = mock_print.call_args[0][0]
+
+                import json
+                result = json.loads(args)
+
+                assert result["mode"] == "apply"
+                assert result["summary"]["images_deleted"] == 0
+                assert result["summary"]["images_failed"] == 2
+                assert "failures" in result
+                assert len(result["failures"]) == 2
+
+    def test_file_cleanup_skips_invalid_ids(self, tmp_path):
+        """Test rows with invalid/missing image_id are skipped"""
+        csv_file = tmp_path / "test_images.csv"
+        csv_file.write_text(
+            '"image_id","image_name","registry_id","created"\n'
+            '1001,repo/image1:v1,my_registry,2025-01-01 10:00:00\n'
+            ',repo/image2:v2,my_registry,2025-01-01 10:00:00\n'  # Empty ID
+            'invalid,repo/image3:v3,my_registry,2025-01-01 10:00:00\n'  # Non-integer
+            '1004,repo/image4:v4,my_registry,2025-01-01 10:00:00\n'
+        )
+
+        with patch('builtins.print') as mock_print:
+            aqua_image_cleanup.images_cleanup_from_file(
+                server="https://test.aquasec.com",
+                token="test-token",
+                file_path=str(csv_file),
+                batch_size=200,
+                apply=False,
+                verbose=False,
+                debug=False
+            )
+
+            mock_print.assert_called_once()
+            args = mock_print.call_args[0][0]
+
+            import json
+            result = json.loads(args)
+
+            # 4 rows scanned, but only 2 valid
+            assert result["summary"]["images_scanned"] == 4
+            assert result["summary"]["images_would_delete"] == 2
+            assert len(result["deletions"]) == 2
+
+    def test_file_cleanup_file_not_found(self, tmp_path):
+        """Test error handling for missing file"""
+        with pytest.raises(SystemExit):
+            with patch('builtins.print'):
+                aqua_image_cleanup.images_cleanup_from_file(
+                    server="https://test.aquasec.com",
+                    token="test-token",
+                    file_path="/nonexistent/file.csv",
+                    batch_size=200,
+                    apply=False,
+                    verbose=False,
+                    debug=False
+                )
+
+    def test_file_cleanup_parses_image_name(self, tmp_path):
+        """Test image_name is properly parsed into repository and tag"""
+        csv_file = tmp_path / "test_images.csv"
+        csv_file.write_text(
+            '"image_id","image_name","registry_id","created"\n'
+            '1001,my-repo/sub-path/image:v1.2.3,my_registry,2025-01-01 10:00:00\n'
+            '1002,simple-image:latest,other_registry,2025-01-01 10:00:00\n'
+            '1003,no-tag-image,another_registry,2025-01-01 10:00:00\n'
+        )
+
+        with patch('builtins.print') as mock_print:
+            aqua_image_cleanup.images_cleanup_from_file(
+                server="https://test.aquasec.com",
+                token="test-token",
+                file_path=str(csv_file),
+                batch_size=200,
+                apply=False,
+                verbose=False,
+                debug=False
+            )
+
+            mock_print.assert_called_once()
+            args = mock_print.call_args[0][0]
+
+            import json
+            result = json.loads(args)
+
+            deletions = result["deletions"]
+
+            # First image: complex path with tag
+            assert deletions[0]["repository"] == "my-repo/sub-path/image"
+            assert deletions[0]["tag"] == "v1.2.3"
+            assert deletions[0]["registry"] == "my_registry"
+
+            # Second image: simple with tag
+            assert deletions[1]["repository"] == "simple-image"
+            assert deletions[1]["tag"] == "latest"
+
+            # Third image: no tag
+            assert deletions[2]["repository"] == "no-tag-image"
+            assert deletions[2]["tag"] == ""
+
+
+class TestProcessBatch:
+    """Test _process_batch helper function"""
+
+    def test_process_batch_success(self):
+        """Test successful batch processing"""
+        mock_delete_response = Mock()
+        mock_delete_response.status_code = 200
+
+        batch_ids = [1001, 1002, 1003]
+        batch_images = [
+            {"image_id": 1001, "registry": "reg", "repository": "repo", "tag": "v1", "name": "repo:v1"},
+            {"image_id": 1002, "registry": "reg", "repository": "repo", "tag": "v2", "name": "repo:v2"},
+            {"image_id": 1003, "registry": "reg", "repository": "repo", "tag": "v3", "name": "repo:v3"},
+        ]
+
+        with patch('aqua_image_cleanup.api_delete_images', return_value=mock_delete_response):
+            deleted, failed, del_list, fail_list = aqua_image_cleanup._process_batch(
+                "https://test.aquasec.com", "test-token",
+                batch_ids, batch_images, apply=True, verbose=False, debug=False
+            )
+
+            assert deleted == 3
+            assert failed == 0
+            assert len(del_list) == 3
+            assert len(fail_list) == 0
+
+    def test_process_batch_dry_run(self):
+        """Test dry run batch processing (no API call)"""
+        batch_ids = [1001, 1002]
+        batch_images = [
+            {"image_id": 1001, "registry": "reg", "repository": "repo", "tag": "v1", "name": "repo:v1"},
+            {"image_id": 1002, "registry": "reg", "repository": "repo", "tag": "v2", "name": "repo:v2"},
+        ]
+
+        with patch('aqua_image_cleanup.api_delete_images') as mock_delete:
+            deleted, failed, del_list, fail_list = aqua_image_cleanup._process_batch(
+                "https://test.aquasec.com", "test-token",
+                batch_ids, batch_images, apply=False, verbose=False, debug=False
+            )
+
+            # API should not be called in dry run
+            mock_delete.assert_not_called()
+
+            assert deleted == 2
+            assert failed == 0
+            assert len(del_list) == 2
+            assert len(fail_list) == 0
+
+
 class TestFiltersOutput:
     """Test filters are properly reported in output"""
 

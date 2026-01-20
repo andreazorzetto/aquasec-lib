@@ -5,14 +5,17 @@ Clean up stale images from Aqua Security Hub inventory
 
 Usage:
     python aqua_image_cleanup.py setup                           # Interactive setup
-    python aqua_image_cleanup.py images cleanup                  # Preview cleanup (dry-run mode)
-    python aqua_image_cleanup.py images cleanup --apply          # Actually remove images
+    python aqua_image_cleanup.py images cleanup --file FILE      # Delete images from CSV file
+    python aqua_image_cleanup.py images cleanup --file FILE --apply  # Actually remove images
+    python aqua_image_cleanup.py images cleanup                  # Preview cleanup from API (dry-run mode)
+    python aqua_image_cleanup.py images cleanup --apply          # Actually remove images from API
     python aqua_image_cleanup.py images cleanup --days 180       # Custom age threshold
     python aqua_image_cleanup.py images cleanup --registry NAME  # Filter by registry name
     python aqua_image_cleanup.py images cleanup --scope NAME     # Filter by scope
 """
 
 import argparse
+import csv
 import json
 import sys
 import os
@@ -207,6 +210,194 @@ def images_cleanup(server, token, days=90, registry=None, scope=None, apply=Fals
         print(json.dumps(result, indent=2))
 
 
+def images_cleanup_from_file(server, token, file_path, batch_size=200, apply=False, verbose=False, debug=False):
+    """Clean up images from a CSV file with batched deletion
+
+    CSV format expected: image_id,image_name,registry_id,created
+    Where image_name is in format: repository:tag
+    """
+
+    deleted_count = 0
+    total_count = 0
+    failed_count = 0
+    deletions = []
+    failures = []
+
+    if debug:
+        print(f"DEBUG: Starting file-based cleanup - file={file_path}, batch_size={batch_size}, apply={apply}")
+
+    # Verify file exists
+    if not os.path.exists(file_path):
+        error_msg = f"File not found: {file_path}"
+        if verbose:
+            print(f"Error: {error_msg}")
+        else:
+            print(json.dumps({"error": error_msg}))
+        sys.exit(1)
+
+    # Print header for real-time output in verbose mode
+    if verbose:
+        header = "Removing images:" if apply else "Images that would be removed:"
+        print(f"\n{header}")
+
+    # Read and process CSV file
+    batch_ids = []
+    batch_images = []
+
+    with open(file_path, 'r', newline='', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+
+        for row in reader:
+            total_count += 1
+
+            # Extract fields from CSV
+            # CSV columns: image_id, image_name, registry_id, created
+            image_id_str = row.get('image_id', '').strip()
+            image_name = row.get('image_name', '').strip()
+            registry_id = row.get('registry_id', '').strip()
+
+            if not image_id_str:
+                if debug:
+                    print(f"DEBUG: Skipping row without image_id: {row}")
+                continue
+
+            # Convert image_id to integer (API expects int64)
+            try:
+                image_id = int(image_id_str)
+            except ValueError:
+                if debug:
+                    print(f"DEBUG: Skipping row with non-integer image_id: {image_id_str}")
+                continue
+
+            # Parse image_name (format: repository:tag)
+            if ':' in image_name:
+                repo_parts = image_name.rsplit(':', 1)
+                repository = repo_parts[0]
+                tag = repo_parts[1]
+            else:
+                repository = image_name
+                tag = ''
+
+            img_info = {
+                "image_id": image_id,
+                "registry": registry_id,
+                "repository": repository,
+                "tag": tag,
+                "name": image_name
+            }
+
+            batch_ids.append(image_id)
+            batch_images.append(img_info)
+
+            # Process batch when it reaches batch_size
+            if len(batch_ids) >= batch_size:
+                deleted, failed, del_list, fail_list = _process_batch(
+                    server, token, batch_ids, batch_images, apply, verbose, debug
+                )
+                deleted_count += deleted
+                failed_count += failed
+                deletions.extend(del_list)
+                failures.extend(fail_list)
+
+                batch_ids = []
+                batch_images = []
+
+                if debug:
+                    print(f"DEBUG: Processed {total_count} images so far...")
+
+    # Process remaining batch
+    if batch_ids:
+        deleted, failed, del_list, fail_list = _process_batch(
+            server, token, batch_ids, batch_images, apply, verbose, debug
+        )
+        deleted_count += deleted
+        failed_count += failed
+        deletions.extend(del_list)
+        failures.extend(fail_list)
+
+    # Prepare output
+    result = {
+        "mode": "apply" if apply else "dry_run",
+        "source": "file",
+        "file": file_path,
+        "summary": {
+            "images_scanned": total_count,
+            "images_deleted" if apply else "images_would_delete": deleted_count,
+            "images_failed": failed_count if apply else 0
+        },
+        "deletions": deletions
+    }
+
+    if apply and failures:
+        result["failures"] = failures
+
+    if verbose:
+        # Show summary
+        print(f"\nSummary:")
+        print(f"  Images scanned: {total_count}")
+        print(f"  Images {'removed' if apply else 'to remove'}: {deleted_count}")
+        if apply and failed_count > 0:
+            print(f"  Images failed: {failed_count}")
+
+        print(f"\nSource: {file_path}")
+
+        # Show status
+        if apply:
+            print(f"\nMode: APPLIED - Images were actually removed!")
+        else:
+            print(f"\nMode: DRY RUN - No images were actually removed")
+            if deleted_count > 0:
+                print("Use --apply flag to actually perform the cleanup.")
+    else:
+        # JSON output
+        print(json.dumps(result, indent=2))
+
+
+def _process_batch(server, token, batch_ids, batch_images, apply, verbose, debug):
+    """Process a batch of images for deletion"""
+
+    deleted_count = 0
+    failed_count = 0
+    deletions = []
+    failures = []
+
+    if apply and batch_ids:
+        # Actually delete this batch
+        if debug:
+            print(f"DEBUG: Calling POST /api/v2/images/actions/delete with {len(batch_ids)} IDs")
+
+        delete_res = api_delete_images(server, token, batch_ids, verbose=debug)
+
+        if delete_res.status_code in [200, 202, 204]:
+            deleted_count = len(batch_ids)
+            deletions = batch_images.copy()
+            if verbose:
+                for img_info in batch_images:
+                    display_name = f"{img_info['registry']}/{img_info['repository']}:{img_info['tag']}"
+                    print(f"    ✓ {display_name}")
+        else:
+            failed_count = len(batch_ids)
+            error_text = f"HTTP {delete_res.status_code}: {delete_res.text}"
+            for img_info in batch_images:
+                failure_info = img_info.copy()
+                failure_info["error"] = error_text
+                failures.append(failure_info)
+            if verbose:
+                for img_info in batch_images:
+                    display_name = f"{img_info['registry']}/{img_info['repository']}:{img_info['tag']}"
+                    print(f"    ✗ {display_name} - {error_text}")
+    else:
+        # Dry run mode - just record what would be deleted
+        deleted_count = len(batch_ids)
+        deletions = batch_images.copy()
+        if verbose:
+            for img_info in batch_images:
+                display_name = f"{img_info['registry']}/{img_info['repository']}:{img_info['tag']}"
+                print(f"    - {display_name}")
+
+    return deleted_count, failed_count, deletions, failures
+
+
 def main():
     """Main function"""
     # Disable SSL warnings
@@ -287,12 +478,16 @@ def main():
     cleanup_parser = images_subparsers.add_parser('cleanup', help='Clean up stale images (dry-run by default)')
     cleanup_parser.add_argument('--apply', action='store_true',
                               help='Actually perform cleanup (default is dry-run mode)')
+    cleanup_parser.add_argument('--file',
+                              help='CSV file with image list (columns: image_id,image_name,registry_id,created)')
+    cleanup_parser.add_argument('--batch-size', type=int, default=200,
+                              help='Batch size for deletion (default: 200, only used with --file)')
     cleanup_parser.add_argument('--days', type=int, default=90,
-                              help='Age threshold in days (default: 90)')
+                              help='Age threshold in days (default: 90, only used without --file)')
     cleanup_parser.add_argument('--registry',
-                              help='Filter by registry name')
+                              help='Filter by registry name (only used without --file)')
     cleanup_parser.add_argument('--scope',
-                              help='Filter by scope name')
+                              help='Filter by scope name (only used without --file)')
 
     # Parse arguments
     args = parser.parse_args(filtered_args)
@@ -423,13 +618,23 @@ def main():
             if args.debug:
                 print(f"DEBUG: Using CSP endpoint: {csp_endpoint}")
 
-            images_cleanup(csp_endpoint, token,
-                          days=args.days,
-                          registry=args.registry,
-                          scope=args.scope,
-                          apply=args.apply,
-                          verbose=args.verbose,
-                          debug=args.debug)
+            if args.file:
+                # File-based cleanup (bypasses API inventory extraction)
+                images_cleanup_from_file(csp_endpoint, token,
+                                        file_path=args.file,
+                                        batch_size=args.batch_size,
+                                        apply=args.apply,
+                                        verbose=args.verbose,
+                                        debug=args.debug)
+            else:
+                # API-based cleanup (original behavior)
+                images_cleanup(csp_endpoint, token,
+                              days=args.days,
+                              registry=args.registry,
+                              scope=args.scope,
+                              apply=args.apply,
+                              verbose=args.verbose,
+                              debug=args.debug)
     except KeyboardInterrupt:
         if args.verbose:
             print('\nExecution interrupted by user')
