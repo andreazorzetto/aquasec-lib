@@ -1,8 +1,8 @@
 """
-Repository-related API functions for Andrea library
+Repository-related API functions for Aqua library
 """
 
-import requests
+from .common import _request_with_retry
 
 
 def api_delete_repo(server, token, registry, name, verbose=False):
@@ -20,12 +20,11 @@ def api_delete_repo(server, token, registry, name, verbose=False):
         Response object from the API call
     """
     api_url = f"{server}/api/v2/repositories/{registry}/{name}"
-    headers = {'Authorization': f'Bearer {token}'}
 
     if verbose:
         print(f"DELETE {api_url}")
 
-    res = requests.delete(url=api_url, headers=headers, verify=False)
+    res = _request_with_retry('DELETE', api_url, token, verbose=verbose)
     return res
 
 
@@ -49,10 +48,9 @@ def api_get_repositories(server, token, page, page_size, registry=None, scope=No
             page=page,
             page_size=page_size)
 
-    headers = {'Authorization': f'Bearer {token}'}
     if verbose:
         print(api_url)
-    res = requests.get(url=api_url, headers=headers, verify=False)
+    res = _request_with_retry('GET', api_url, token, verbose=verbose)
 
     return res
 

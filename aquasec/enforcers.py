@@ -1,9 +1,10 @@
 """
-Enforcer-related API functions for Andrea library
+Enforcer-related API functions for Aqua library
 """
 
-import requests
 import sys
+
+from .common import _request_with_retry
 
 
 def api_get_enforcer_groups(server, token, enforcer_group=None, scope=None, page_index=1, page_size=100, verbose=False):
@@ -17,12 +18,10 @@ def api_get_enforcer_groups(server, token, enforcer_group=None, scope=None, page
     else:
         api_url = server + "/api/v1/hostsbatch?orderby=id asc&page=" + str(page_index) + "&pagesize=" + str(page_size)
 
-    headers = {'Authorization': f'Bearer {token}'}
-
     if verbose:
         print(api_url)
 
-    res = requests.get(url=api_url, headers=headers, verify=False)
+    res = _request_with_retry('GET', api_url, token, verbose=verbose)
 
     return res
 
@@ -180,14 +179,12 @@ def _get_enforcer_count_by_type(server, token, enforcer_type, status, scope=None
     if scope:
         api_url += f"&scope={scope}"
 
-    headers = {'Authorization': f'Bearer {token}'}
-
     if verbose:
         print(f"API call: {api_url}")
 
     try:
-        res = requests.get(url=api_url, headers=headers, verify=False)
-        
+        res = _request_with_retry('GET', api_url, token, verbose=verbose)
+
         if res.status_code == 200:
             response_json = res.json()
             count = response_json.get("count", 0)
@@ -198,7 +195,7 @@ def _get_enforcer_count_by_type(server, token, enforcer_type, status, scope=None
             if verbose:
                 print(f"  API error {res.status_code} for {enforcer_type} {status}")
             return 0
-            
+
     except Exception as e:
         if verbose:
             print(f"  Request failed for {enforcer_type} {status}: {e}")

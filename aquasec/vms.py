@@ -1,9 +1,10 @@
 """
-VM inventory related API functions for Andrea library
+VM inventory related API functions for Aqua library
 """
 
-import requests
 import urllib3
+
+from .common import _request_with_retry
 
 # Disable SSL warnings for unverified HTTPS requests
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -23,10 +24,9 @@ def api_get_vms(server, token, page, page_size, scope=None, verbose=False):
             page=page,
             page_size=page_size)
 
-    headers = {'Authorization': f'Bearer {token}'}
     if verbose:
         print(api_url)
-    res = requests.get(url=api_url, headers=headers, verify=False)
+    res = _request_with_retry('GET', api_url, token, verbose=verbose)
 
     return res
 
@@ -45,10 +45,9 @@ def api_get_vms_count(server, token, scope=None, use_estimated=False, skip_count
             use_estimated=str(use_estimated).lower(),
             skip_count=str(skip_count).lower())
 
-    headers = {'Authorization': f'Bearer {token}'}
     if verbose:
         print(api_url)
-    res = requests.get(url=api_url, headers=headers, verify=False)
+    res = _request_with_retry('GET', api_url, token, verbose=verbose)
 
     return res
 

@@ -1,10 +1,73 @@
 """
-Common utility functions for Andrea library
+Common utility functions for Aqua library
 """
 
 import csv
 import json
+import requests
 from os.path import exists
+
+# Module-level token cache for re-authentication
+_cached_token = None
+
+
+def _request_with_retry(method, url, token, headers=None, verbose=False, **kwargs):
+    """
+    Make HTTP request with automatic re-authentication on 401.
+
+    All API functions should use this instead of calling requests directly.
+    This ensures automatic token refresh on 401 responses.
+
+    Args:
+        method: HTTP method ('GET', 'POST', 'DELETE', etc.)
+        url: Full API URL
+        token: Authentication token
+        headers: Optional additional headers (Authorization is added automatically)
+        verbose: Print debug info on re-auth
+        **kwargs: Passed to requests (params, json, data, etc.)
+
+    Returns:
+        Response object from the API call
+    """
+    global _cached_token
+
+    # Use cached token if available (from a previous re-auth)
+    effective_token = _cached_token if _cached_token else token
+
+    # Build headers
+    if headers is None:
+        headers = {}
+    headers['Authorization'] = f'Bearer {effective_token}'
+
+    # Ensure verify=False is set (can be overridden in kwargs)
+    kwargs.setdefault('verify', False)
+
+    # Make the request
+    res = requests.request(method, url, headers=headers, **kwargs)
+
+    # Handle 401 - token expired
+    if res.status_code == 401:
+        if verbose:
+            print("Token expired. Re-authenticating...")
+
+        from .auth import authenticate
+        new_token = authenticate(verbose=verbose)
+        _cached_token = new_token
+
+        # Update header and retry
+        headers['Authorization'] = f'Bearer {new_token}'
+        res = requests.request(method, url, headers=headers, **kwargs)
+
+        if verbose and res.status_code == 200:
+            print("Re-authentication successful.")
+
+    return res
+
+
+def clear_token_cache():
+    """Clear the cached token. Useful for testing or forcing re-auth."""
+    global _cached_token
+    _cached_token = None
 
 
 def write_content_to_file(file, content):

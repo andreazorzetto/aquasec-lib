@@ -1,9 +1,10 @@
 """
-Code repository-related API functions for Andrea library
+Code repository-related API functions for Aqua library
 """
 
-import requests
 import re
+
+from .common import _request_with_retry
 
 
 def _get_supply_chain_url(server):
@@ -81,13 +82,11 @@ def api_get_code_repositories_legacy(server, token, page=1, page_size=50, scope=
     else:
         params["scope"] = ""
 
-    headers = {'Authorization': f'Bearer {token}'}
-
     if verbose:
         print(f"Legacy API URL: {api_url}")
         print(f"Params: {params}")
 
-    res = requests.get(url=api_url, headers=headers, params=params, verify=False)
+    res = _request_with_retry('GET', api_url, token, params=params, verbose=verbose)
     return res
 
 
@@ -165,14 +164,12 @@ def api_get_code_repositories(server, token, page=1, page_size=50, scope=None, u
     # This is kept for compatibility but won't filter by scope
     if scope and verbose:
         print(f"Warning: Scope filtering is not supported by the Supply Chain API")
-    
-    headers = {'Authorization': f'Bearer {token}'}
-    
+
     if verbose:
         print(f"API URL: {api_url}")
         print(f"Params: {params}")
-    
-    res = requests.get(url=api_url, headers=headers, params=params, verify=False)
+
+    res = _request_with_retry('GET', api_url, token, params=params, verbose=verbose)
     return res
 
 

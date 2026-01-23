@@ -1,31 +1,30 @@
 """
-License-related API functions for Andrea library
+License-related API functions for Aqua library
 """
 
-import requests
 import sys
+
+from .common import _request_with_retry
 
 
 def api_get_licenses(server, token, verbose=False):
     """Get license information from the server"""
     api_url = server + "/api/v2/licenses?page=1&pagesize=25&order_by=-status"
-    headers = {'Authorization': f'Bearer {token}'}
 
     if verbose:
         print(f"API URL: {api_url}")
 
     try:
-        res = requests.get(url=api_url, headers=headers, verify=False)
+        res = _request_with_retry('GET', api_url, token, verbose=verbose)
         if verbose:
             print(f"Response status: {res.status_code}")
-            print(f"Request headers: {headers}")
-        
+
         if not res.ok:
             print(f"API Error: {res.status_code} - {res.reason}")
             if verbose:
                 print(f"Response body: {res.text}")
                 print(f"Response headers: {dict(res.headers)}")
-        
+
         return res
     except Exception as e:
         print(f"Request failed: {str(e)}")
@@ -35,23 +34,21 @@ def api_get_licenses(server, token, verbose=False):
 def api_get_dta_license(server, token, verbose=False):
     """Get DTA license information"""
     api_url = server + "/api/v1/settings/system/system"
-    headers = {'Authorization': f'Bearer {token}'}
 
     if verbose:
         print(api_url)
 
-    res = requests.get(url=api_url, headers=headers, verify=False)
+    res = _request_with_retry('GET', api_url, token, verbose=verbose)
     return res.json()["dta"]
 
 
-def api_post_dta_license_utilization(server, token, dta_token, dta_url):
+def api_post_dta_license_utilization(server, token, dta_token, dta_url, verbose=False):
     """Get DTA license utilization"""
     api_url = server + "/api/v2/dta/license_status"
 
     payload = {"url": f"{dta_url}", "token": f"{dta_token}"}
-    headers = {'Authorization': f'Bearer {token}'}
 
-    res = requests.post(url=api_url, headers=headers, json=payload, verify=False)
+    res = _request_with_retry('POST', api_url, token, json=payload, verbose=verbose)
     return res
 
 

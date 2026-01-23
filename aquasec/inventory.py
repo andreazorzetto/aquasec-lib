@@ -5,7 +5,7 @@ This module provides functions for querying and managing the Hub inventory
 at /api/v2/hub/inventory/assets/images/list endpoint.
 """
 
-import requests
+from .common import _request_with_retry
 
 
 def api_get_inventory_images(server, token, page=1, page_size=200, scope=None,
@@ -43,13 +43,12 @@ def api_get_inventory_images(server, token, page=1, page_size=200, scope=None,
         params['registry_name'] = registry_name
 
     api_url = f"{server}/api/v2/hub/inventory/assets/images/list"
-    headers = {'Authorization': f'Bearer {token}'}
 
     if verbose:
         print(f"GET {api_url}")
         print(f"Params: {params}")
 
-    res = requests.get(url=api_url, headers=headers, params=params, verify=False)
+    res = _request_with_retry('GET', api_url, token, params=params, verbose=verbose)
     return res
 
 
@@ -79,13 +78,12 @@ def api_get_inventory_images_count(server, token, scope=None, first_found_date=N
         params['has_workloads'] = str(has_workloads).lower()
 
     api_url = f"{server}/api/v2/hub/inventory/assets/images/list/count"
-    headers = {'Authorization': f'Bearer {token}'}
 
     if verbose:
         print(f"GET {api_url}")
         print(f"Params: {params}")
 
-    res = requests.get(url=api_url, headers=headers, params=params, verify=False)
+    res = _request_with_retry('GET', api_url, token, params=params, verbose=verbose)
     return res
 
 
@@ -103,17 +101,14 @@ def api_delete_images(server, token, uids, verbose=False):
         Response object from the API call
     """
     api_url = f"{server}/api/v2/images/actions/delete"
-    headers = {
-        'Authorization': f'Bearer {token}',
-        'Content-Type': 'application/json'
-    }
+    headers = {'Content-Type': 'application/json'}
     payload = {'uids': uids}
 
     if verbose:
         print(f"POST {api_url}")
         print(f"Deleting {len(uids)} images")
 
-    res = requests.post(url=api_url, headers=headers, json=payload, verify=False)
+    res = _request_with_retry('POST', api_url, token, headers=headers, json=payload, verbose=verbose)
     return res
 
 

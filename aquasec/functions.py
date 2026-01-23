@@ -1,32 +1,31 @@
 """
-Functions-related API functions for Andrea library
+Functions-related API functions for Aqua library
 """
 
-import requests
+from .common import _request_with_retry
 
 
 def api_get_functions(server, token, page=1, page_size=50, verbose=False):
     """Get serverless functions from the server
-    
+
     This API call works similar to the image repos one, and returns the count by default
     for totals.
     """
     api_url = f"{server}/api/v2/serverless/functions?page={page}&pagesize={page_size}&order_by=name"
-    headers = {'Authorization': f'Bearer {token}'}
 
     if verbose:
         print(f"API URL: {api_url}")
 
     try:
-        res = requests.get(url=api_url, headers=headers, verify=False)
+        res = _request_with_retry('GET', api_url, token, verbose=verbose)
         if verbose:
             print(f"Response status: {res.status_code}")
-        
+
         if not res.ok:
             print(f"API Error: {res.status_code} - {res.reason}")
             if verbose:
                 print(f"Response body: {res.text}")
-        
+
         return res
     except Exception as e:
         print(f"Request failed: {str(e)}")

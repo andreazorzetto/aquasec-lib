@@ -1,9 +1,10 @@
 """
-Application Scopes related API functions for Andrea library
+Application Scopes related API functions for Aqua library
 """
 
-import requests
 import sys
+
+from .common import _request_with_retry
 
 
 def api_get_scopes(server, token, page=1, pagesize=100, verbose=False):
@@ -11,10 +12,9 @@ def api_get_scopes(server, token, page=1, pagesize=100, verbose=False):
     api_url = server + "/api/v2/access_management/scopes?page=" + str(page) + "&pagesize=" + str(
         pagesize) + "&order_by=name"
 
-    headers = {'Authorization': f'Bearer {token}'}
     if verbose:
         print(api_url)
-    res = requests.get(url=api_url, headers=headers, verify=False)
+    res = _request_with_retry('GET', api_url, token, verbose=verbose)
 
     if res.status_code != 200:
         print(res.json())
