@@ -24,6 +24,7 @@ jobs:
       vm-extract-changed: ${{ steps.changes.outputs.vm-extract }}
       repo-delete-utility-changed: ${{ steps.changes.outputs.repo-delete-utility }}
       image-cleanup-utility-changed: ${{ steps.changes.outputs.image-cleanup-utility }}
+      global-scope-extract-changed: ${{ steps.changes.outputs.global-scope-extract }}
     steps:
     - uses: actions/checkout@v4
     - uses: dorny/paths-filter@v2
@@ -44,6 +45,9 @@ jobs:
             - 'aquasec/**'
           image-cleanup-utility:
             - 'examples/image-cleanup-utility/**'
+            - 'aquasec/**'
+          global-scope-extract:
+            - 'examples/global-scope-extract/**'
             - 'aquasec/**'
 
   test-library:
@@ -262,3 +266,40 @@ jobs:
       run: |
         cd examples/image-cleanup-utility
         python aqua_image_cleanup.py --help
+
+  test-global-scope-extract:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.global-scope-extract-changed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install library in development mode
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+
+    - name: Install example dependencies
+      run: |
+        cd examples/global-scope-extract
+        pip install -r requirements.txt
+        pip install -r requirements-test.txt
+
+    - name: Run global scope extract tests
+      run: |
+        cd examples/global-scope-extract
+        python -m pytest tests/ -v --tb=short
+
+    - name: Test global scope extract CLI
+      run: |
+        cd examples/global-scope-extract
+        python aqua_global_scope_extract.py --help
