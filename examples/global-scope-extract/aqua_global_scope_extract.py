@@ -1,20 +1,13 @@
 #!/usr/bin/env python3
 """
-Aqua Global-Scope Extract Utility
+Aqua Global-Scope Extract
 
-Extracts the image repositories and running containers that are visible ONLY in
-the Global scope -- i.e. assets that are not covered by any custom application
-scope. These are the assets that fall into "nobody's net": no team owns them,
-because no application scope selects them, so they are invisible on team
-dashboards even though they exist in the platform.
+Reports how image repositories and running containers map to application scopes,
+including the ones that are not in any application scope.
 
-How it works (the "scope delta"):
-    1. List every application scope (excluding the built-in "Global").
-    2. Fetch the full Global inventory (all repositories, all containers).
-    3. For each application scope, fetch the repositories/containers it selects
-       and collect their keys.
-    4. Anything in the Global inventory whose key is in NO application scope is
-       "unscoped" (Global-only).
+It lists the application scopes, reads the full inventory, then subtracts the
+union of everything the scopes select; whatever is left is reported as unscoped.
+All calls are read-only (GET).
 
 Usage:
     python aqua_global_scope_extract.py setup                 # Interactive setup
@@ -386,8 +379,8 @@ def write_csv_files(result, csv_dir):
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        description="Aqua Global-Scope Extract Utility - find repositories and "
-                    "containers that belong only to the Global scope",
+        description="Aqua Global-Scope Extract - report how repositories and "
+                    "containers map to application scopes, including unscoped ones",
         prog="aqua_global_scope_extract",
         epilog="Global options can be placed before or after the command:\n"
                "  -v, --verbose        Human-readable tables instead of JSON\n"

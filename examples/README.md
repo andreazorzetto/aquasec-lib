@@ -143,17 +143,15 @@ python aqua_image_cleanup.py images cleanup --apply
 ```
 
 ### 6. Global-Scope Extract (`global-scope-extract/`)
-Find image repositories and running containers that are only in the **Global**
-scope — assets not covered by any application scope, and therefore invisible on
-team dashboards. Fills a gap the console does not cover out of the box.
+Report how image repositories and running containers map to application scopes,
+including the ones that are not in any application scope.
 
 **Features:**
-- "Scope delta": Global inventory minus everything selected by any app scope
-- Covers both repositories and running containers
-- Unscoped containers grouped by cluster → namespace for actionable follow-up
-- JSON (default), tables (`-v`), JSON file, CSV, a multi-sheet Excel workbook (`--xlsx`), and a self-contained offline HTML dashboard (`--dashboard`) built around an application-scope coverage heatmap with the Global-only bucket pinned
-- Safe to re-run on a schedule for fresh snapshots
-- Requires Access Management (read) permission to enumerate scopes (clear error if missing)
+- Per-scope coverage for both repositories and running containers
+- Unscoped containers grouped by cluster → namespace
+- Output as tables (`-v`), JSON, CSV, an Excel workbook (`--xlsx`), or a self-contained offline HTML dashboard (`--dashboard`)
+- Read-only, and safe to re-run on a schedule for fresh snapshots
+- Needs read access to Repositories, Containers and Access Management
 
 **Quick Start:**
 ```bash
