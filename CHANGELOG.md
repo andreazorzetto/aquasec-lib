@@ -5,6 +5,24 @@ All notable changes to the aquasec library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-07-24
+
+### Added
+- **NEW**: `containers.py` module for the running-container inventory (`/api/v2/containers`)
+  - `api_get_containers()`: Raw call with optional scope/cluster/namespace/status filters (passed as request params so spaces/special characters are URL-encoded correctly)
+  - `get_container_count()`: Total container count for a scope (reads the `count` field, pagesize=1)
+  - `get_all_containers()`: Fetch all containers for the given filters with automatic pagination
+  - `get_container_count_by_scope()`: Per-scope container counts
+  - `container_key()`: Stable unique identifier for a container instance (`container_uid`, falling back to `id`) — used to compute scope deltas
+- **NEW**: `global-scope-extract` example utility — reports the image repositories and running containers that are visible only in the Global scope (not selected by any application scope), with JSON/table/CSV output and a per-cluster/namespace breakdown of unscoped containers. Also produces a shareable multi-sheet Excel workbook (`--xlsx`) and a single self-contained, offline, theme-aware HTML dashboard (`--dashboard`): a two-pane explorer with a drag-to-resize splitter, whose left pane is an application-scope coverage heatmap (every scope's repository/container counts, unscoped "no application scope" bucket pinned neutrally, sort/search) and whose right pane lists the matched resources of whichever scope you click, in labelled sections (repositories by registry, containers by cluster, each searchable; deep-linkable via `#scope=`)
+- **NEW**: Test suites for the containers module (`tests/test_containers.py`) and the utility (`examples/global-scope-extract/tests/`)
+
+### Changed
+- **Scopes**: `api_get_scopes()` now returns the response object instead of printing the error body and calling `sys.exit(1)`, matching the convention of the other `api_*` functions. `get_app_scopes()` now raises a clear `Exception` on a non-200 response (e.g. HTTP 403 when the API key lacks Access Management read permission) instead of silently exiting, so callers/CLIs can surface a meaningful error.
+
+### Why
+- Platform teams governing multi-tenant Aqua deployments need to identify the repositories and containers that are not assigned to any application scope ("Global only"), because those assets are not visible on any team's dashboard and effectively fall outside ownership. The Aqua console does not offer this out of the box (a product enhancement request tracks adding it natively); this release provides the programmatic building blocks (containers API + scope-delta utility) to produce the data on demand and on a schedule.
+
 ## [0.8.0] - 2026-06-11
 
 ### Added

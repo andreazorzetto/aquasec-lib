@@ -62,6 +62,7 @@ cd examples/image-cleanup-utility && python aqua_image_cleanup.py --help
 - **vms.py**: VM inventory management with filtering (added in v0.5.0)
 - **inventory.py**: Hub inventory images API (added in v0.6.0)
 - **host_images.py**: Images discovered on hosts/VMs by enforcers, per-scope repo counts (added in v0.8.0)
+- **containers.py**: Running-container inventory API with scope filtering (added in v0.9.0)
 - **scopes.py**: Application scope functions
 - **common.py**: Utility functions and `_request_with_retry` (auto re-auth on 401)
 
@@ -85,13 +86,14 @@ cd examples/image-cleanup-utility && python aqua_image_cleanup.py --help
 
 ## Production Examples
 
-The `examples/` directory contains five production-ready utilities demonstrating library usage:
+The `examples/` directory contains six production-ready utilities demonstrating library usage:
 
 1. **license-utility/**: License utilization analysis and reporting
 2. **repo-breakdown/**: Repository scope analysis and orphan detection
 3. **vm-extract/**: VM inventory extraction with advanced filtering
 4. **repo-delete-utility/**: Bulk repository deletion with safety features
 5. **image-cleanup-utility/**: Stale image cleanup from Hub inventory
+6. **global-scope-extract/**: Repositories and containers only in the Global scope (unscoped-coverage gaps)
 
 Each example includes:
 - Comprehensive CLI interface with argparse
@@ -136,7 +138,7 @@ Secure, profile-based credential storage with:
 
 ## Version Information
 
-Current version: 0.8.0 (see setup.py and aquasec/__init__.py)
+Current version: 0.9.0 (see setup.py and aquasec/__init__.py)
 
 Major versions:
 - v0.4.0: Added serverless functions support, enforcer optimizations
@@ -144,3 +146,4 @@ Major versions:
 - v0.6.0: Added repository deletion, Hub inventory images module, and bulk delete utilities
 - v0.7.x: Auth timeouts, file-based bulk image cleanup, automatic token refresh on 401
 - v0.8.0: Added host images module (per-scope repository counts for licensing)
+- v0.9.0: Added running-containers module and the global-scope-extract utility (unscoped repositories/containers)

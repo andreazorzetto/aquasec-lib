@@ -1,0 +1,17 @@
+# Generated reports contain live inventory data (scope names, image repos,
+# container/cluster names, hosts). NEVER commit them — this protection must be
+# local so it travels if this folder is extracted into its own repository.
+output/
+*.json
+*.csv
+*.xlsx
+dashboard*.html
+report*.html
+*.log
+
+# Python / tooling / OS
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store

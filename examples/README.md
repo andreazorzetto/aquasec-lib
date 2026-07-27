@@ -6,7 +6,7 @@ This directory contains production-ready example implementations demonstrating h
 
 First, ensure you have the aquasec library installed:
 ```bash
-pip install aquasec>=0.6.0
+pip install aquasec>=0.9.0
 ```
 
 Or install the latest development version from this repository:
@@ -140,6 +140,37 @@ python aqua_image_cleanup.py images cleanup --days 180
 
 # Apply actual cleanup
 python aqua_image_cleanup.py images cleanup --apply
+```
+
+### 6. Global-Scope Extract (`global-scope-extract/`)
+Find image repositories and running containers that are only in the **Global**
+scope — assets not covered by any application scope, and therefore invisible on
+team dashboards. Fills a gap the console does not cover out of the box.
+
+**Features:**
+- "Scope delta": Global inventory minus everything selected by any app scope
+- Covers both repositories and running containers
+- Unscoped containers grouped by cluster → namespace for actionable follow-up
+- JSON (default), tables (`-v`), JSON file, CSV, a multi-sheet Excel workbook (`--xlsx`), and a self-contained offline HTML dashboard (`--dashboard`) built around an application-scope coverage heatmap with the Global-only bucket pinned
+- Safe to re-run on a schedule for fresh snapshots
+- Requires Access Management (read) permission to enumerate scopes (clear error if missing)
+
+**Quick Start:**
+```bash
+cd examples/global-scope-extract
+pip install -r requirements.txt
+
+# Setup credentials (shared with other utilities)
+python aqua_global_scope_extract.py setup
+
+# JSON summary + lists of unscoped repos and containers
+python aqua_global_scope_extract.py extract
+
+# Human-readable tables
+python aqua_global_scope_extract.py extract -v
+
+# Save a snapshot
+python aqua_global_scope_extract.py extract --json-file report.json --csv-dir ./out
 ```
 
 ## Common Usage Patterns
