@@ -6,13 +6,6 @@ application scopes — including the ones that aren't in any application scope.
 Produces a summary on the console, an Excel workbook, and an interactive HTML
 dashboard. Read-only: every API call is a `GET`.
 
-## Screenshot
-
-<!-- Add a dashboard screenshot here, e.g. ![Dashboard](docs/dashboard.png)
-     Keep committed screenshots free of real tenant data. -->
-
-_Screenshot placeholder._
-
 ## Getting started
 
 **1. Install**
