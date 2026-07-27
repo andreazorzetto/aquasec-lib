@@ -47,21 +47,21 @@ class TestSupplyChainUrlDerivation:
     @patch.dict(os.environ, {'AQUA_ENDPOINT': 'https://eu-1.api.cloudsploit.com'})
     def test_region_from_auth_endpoint(self):
         """Test extracting region from auth endpoint when CSP endpoint has no region"""
-        server = "https://c1fae5dbe2.cloud.aquasec.com"
+        server = "https://tenant123.cloud.aquasec.com"
         expected = "https://api.eu-1.supply-chain.cloud.aquasec.com"
         assert _get_supply_chain_url(server) == expected
 
     @patch.dict(os.environ, {'AQUA_ENDPOINT': 'https://us-1.api.cloudsploit.com'})
     def test_us_region_from_auth_endpoint(self):
         """Test US region from auth endpoint"""
-        server = "https://c1fae5dbe2.cloud.aquasec.com"
+        server = "https://tenant123.cloud.aquasec.com"
         expected = "https://api.us-1.supply-chain.cloud.aquasec.com"
         assert _get_supply_chain_url(server) == expected
 
     @patch.dict(os.environ, {'AQUA_ENDPOINT': ''})
     def test_fallback_to_us_no_region_info(self):
         """Test fallback to US when no region info available"""
-        server = "https://c1fae5dbe2.cloud.aquasec.com"
+        server = "https://tenant123.cloud.aquasec.com"
         expected = "https://api.supply-chain.cloud.aquasec.com"
         assert _get_supply_chain_url(server) == expected
 
@@ -74,8 +74,8 @@ class TestSupplyChainUrlDerivation:
 class TestApiGetCodeRepositories:
     """Test the API call function"""
 
-    @patch('aquasec.code_repositories.requests.get')
-    def test_api_call_success(self, mock_get):
+    @patch('aquasec.code_repositories._request_with_retry')
+    def test_api_call_success(self, mock_req):
         """Test successful API call"""
         # Mock response
         mock_response = Mock()
@@ -85,7 +85,7 @@ class TestApiGetCodeRepositories:
             "total_count": 1,
             "current_page": 1
         }
-        mock_get.return_value = mock_response
+        mock_req.return_value = mock_response
 
         server = "https://xxx.eu-1.cloud.aquasec.com"
         token = "test-token"
@@ -95,29 +95,27 @@ class TestApiGetCodeRepositories:
         assert result.status_code == 200
         assert result.json()["total_count"] == 1
 
-        # Verify the correct URL was called
-        mock_get.assert_called_once()
-        call_args = mock_get.call_args
-        assert "https://api.eu-1.supply-chain.cloud.aquasec.com/v2/build/repositories" in call_args[1]['url']
+        # Verify the correct method/URL was called
+        mock_req.assert_called_once()
+        args, kwargs = mock_req.call_args
+        assert args[0] == 'GET'
+        assert "https://api.eu-1.supply-chain.cloud.aquasec.com/v2/build/repositories" in args[1]
+        assert args[2] == token
 
         # Verify parameters
-        params = call_args[1]['params']
+        params = kwargs['params']
         assert params['page'] == 1
         assert params['page_size'] == 25
         assert params['order_by'] == '-scan_date'
         assert params['no_scan_repositories'] == 'true'
 
-        # Verify headers
-        headers = call_args[1]['headers']
-        assert headers['Authorization'] == 'Bearer test-token'
-
-    @patch('aquasec.code_repositories.requests.get')
-    def test_api_call_with_scope_warning(self, mock_get, capsys):
+    @patch('aquasec.code_repositories._request_with_retry')
+    def test_api_call_with_scope_warning(self, mock_req, capsys):
         """Test API call with scope parameter shows warning"""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"data": [], "total_count": 0}
-        mock_get.return_value = mock_response
+        mock_req.return_value = mock_response
 
         server = "https://xxx.cloud.aquasec.com"
         token = "test-token"

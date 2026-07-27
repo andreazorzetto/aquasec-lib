@@ -25,6 +25,9 @@ from aquasec import (
     get_repo_count_by_scope,
     get_enforcer_count_by_scope,
     get_code_repo_count_by_scope,
+    get_host_image_repo_count_by_scope,
+    get_all_host_images,
+    extract_repo_base,
     get_function_count,
     api_get_dta_license,
     api_post_dta_license_utilization,
@@ -44,7 +47,7 @@ from aquasec import (
 )
 
 # Version
-__version__ = "0.4.1"
+__version__ = "0.5.0"
 
 
 def license_show(server, token, verbose=False, debug=False):
@@ -261,8 +264,9 @@ def license_count(server, token, verbose=False, debug=False):
 
 
 def license_breakdown(server, token, verbose=False, debug=False, csv_file=None, json_file=None, skip_repos=False,
-                    only_images=False, only_code=False, only_enforcers=False,
-                    skip_images=False, skip_code=False, skip_enforcers=False, include_global=False):
+                    only_images=False, only_code=False, only_enforcers=False, only_host_images=False,
+                    skip_images=False, skip_code=False, skip_enforcers=False, skip_host_images=False,
+                    include_global=False):
     """Provide license usage breakdown per application scope"""
     # get the license information
     licenses = get_licences(server, token, debug)
@@ -303,23 +307,33 @@ def license_breakdown(server, token, verbose=False, debug=False, csv_file=None, 
     process_images = True
     process_code = True
     process_enforcers = True
+    process_host_images = True
 
     # Handle --only-* flags
     if only_images:
         process_code = False
         process_enforcers = False
+        process_host_images = False
         if verbose:
             print("Asset filtering: Only scanning container image repositories")
     elif only_code:
         process_images = False
         process_enforcers = False
+        process_host_images = False
         if verbose:
             print("Asset filtering: Only scanning code repositories")
     elif only_enforcers:
         process_images = False
         process_code = False
+        process_host_images = False
         if verbose:
             print("Asset filtering: Only scanning enforcers")
+    elif only_host_images:
+        process_images = False
+        process_code = False
+        process_enforcers = False
+        if verbose:
+            print("Asset filtering: Only scanning host image repositories")
 
     # Handle --skip-* flags
     if skip_images:
@@ -334,16 +348,23 @@ def license_breakdown(server, token, verbose=False, debug=False, csv_file=None, 
         process_enforcers = False
         if verbose:
             print("Asset filtering: Skipping enforcers")
+    if skip_host_images:
+        process_host_images = False
+        if verbose:
+            print("Asset filtering: Skipping host image repositories")
 
     # Handle legacy --skip-repos flag (overrides everything else for backward compatibility)
+    # "enforcers only": skips container image, code, and host image repositories.
     if skip_repos:
         process_images = False
         process_code = False
+        process_host_images = False
         if verbose:
             print("Skipping all repository counting (legacy mode)...")
 
     if debug:
-        print(f"DEBUG: Asset processing flags - Images: {process_images}, Code: {process_code}, Enforcers: {process_enforcers}\n")
+        print(f"DEBUG: Asset processing flags - Images: {process_images}, Code: {process_code}, "
+              f"Enforcers: {process_enforcers}, Host Images: {process_host_images}\n")
 
     # get the count of scopes per repo (container image repositories)
     if not process_images:
@@ -379,13 +400,26 @@ def license_breakdown(server, token, verbose=False, debug=False, csv_file=None, 
         if debug:
             print("DEBUG: Code repo count by scope: Not available in this version\n")
 
-    # put scopes, repos, code repos and enforcers data together
+    # get host image repository count by scope (unique repo base names, tag stripped)
+    if not process_host_images:
+        host_image_count_by_scope = {scope: 0 for scope in scopes_list}
+        if debug:
+            print("DEBUG: Host image repo count by scope: Skipped\n")
+    else:
+        if verbose:
+            print("Counting host image repositories per scope (this enumerates host images)...")
+        host_image_count_by_scope = get_host_image_repo_count_by_scope(server, token, scopes_list, debug)
+        if debug:
+            print("DEBUG: Host image repo count by scope:", json.dumps(host_image_count_by_scope), "\n")
+
+    # put scopes, repos, code repos, host images and enforcers data together
     breakdown_data = {}
     for key, value in repo_count_by_scope.items():
         if key in enforcer_count_by_scope:
             breakdown_data[key] = {
-                "scope name": key, 
+                "scope name": key,
                 "repos": value,
+                "host_image_repos": host_image_count_by_scope.get(key, 0),
                 "code_repos": code_repo_count_by_scope.get(key, 0),
                 **enforcer_count_by_scope[key]
             }
@@ -410,6 +444,8 @@ def license_breakdown(server, token, verbose=False, debug=False, csv_file=None, 
         field_names = ["Scope"]
         if process_images:
             field_names.append("Images")
+        if process_host_images:
+            field_names.append("Host Images")
         if process_code:
             field_names.append("Code")
         if process_enforcers:
@@ -421,6 +457,8 @@ def license_breakdown(server, token, verbose=False, debug=False, csv_file=None, 
             row = [details["scope name"]]
             if process_images:
                 row.append(details["repos"])
+            if process_host_images:
+                row.append(details.get("host_image_repos", 0))
             if process_code:
                 row.append(details.get("code_repos", 0))
             if process_enforcers:
@@ -437,6 +475,84 @@ def license_breakdown(server, token, verbose=False, debug=False, csv_file=None, 
         print(table)
     else:
         # JSON output by default
+        print(json.dumps(breakdown_data, indent=2))
+
+
+def license_host_images(server, token, verbose=False, debug=False, csv_file=None,
+                        json_file=None, include_global=False, list_repos=False):
+    """Provide a host image utilization breakdown per application scope.
+
+    Host images (images discovered on hosts/VMs by enforcers) land in a single
+    bucket in the General Images tab, but the Host Images API supports application
+    scope filtering. This counts them per scope by unique repository base name
+    (tag/digest stripped), which is the unit relevant for licensing.
+    """
+    # get all application scopes
+    scopes_list = []
+    for scope in get_app_scopes(server, token, debug):
+        scopes_list.append(scope["name"])
+    if debug:
+        print("DEBUG: All scopes:", scopes_list, "\n")
+
+    # Filter Global scope unless --include-global flag is set
+    if not include_global and "Global" in scopes_list:
+        scopes_list.remove("Global")
+        if verbose:
+            print("Excluding 'Global' scope from processing (use --include-global to include)")
+
+    # For each scope, fetch host images once and derive both totals
+    breakdown_data = {}
+    for scope in scopes_list:
+        if verbose:
+            print(f"Processing scope: {scope}")
+        images = get_all_host_images(server, token, scope=scope, verbose=debug)
+        repos = sorted({extract_repo_base(img.get("name")) for img in images if img.get("name")})
+        entry = {
+            "scope name": scope,
+            "host_image_repos": len(repos),
+            "host_images": len(images),
+        }
+        if list_repos:
+            entry["repositories"] = repos
+        breakdown_data[scope] = entry
+        if debug:
+            print(f"DEBUG: scope '{scope}': {len(images)} host images, {len(repos)} unique repos\n")
+
+    # write csv - silent unless verbose
+    if csv_file:
+        import csv as _csv
+        with open(csv_file, mode='w', newline='') as f:
+            writer = _csv.DictWriter(f, fieldnames=['scope', 'host_image_repos', 'host_images'])
+            writer.writeheader()
+            for details in breakdown_data.values():
+                writer.writerow({
+                    'scope': details['scope name'],
+                    'host_image_repos': details['host_image_repos'],
+                    'host_images': details['host_images'],
+                })
+        if verbose:
+            print(f"Host image breakdown exported to CSV: {csv_file}")
+
+    # write json - silent unless verbose
+    if json_file:
+        write_json_to_file(json_file, breakdown_data)
+        if verbose:
+            print(f"Host image breakdown exported to JSON: {json_file}")
+
+    if verbose:
+        table = PrettyTable()
+        table.field_names = ["Scope", "Host Image Repos", "Host Images (total)"]
+        table.align["Scope"] = "l"
+        table.align["Host Image Repos"] = "r"
+        table.align["Host Images (total)"] = "r"
+        for details in breakdown_data.values():
+            table.add_row([
+                details["scope name"],
+                details["host_image_repos"],
+                details["host_images"],
+            ])
+        print(table)
+    else:
         print(json.dumps(breakdown_data, indent=2))
 
 
@@ -538,21 +654,37 @@ def main():
 
     # Asset type filtering arguments
     license_breakdown_parser.add_argument('--only-images', dest='only_images', action='store_true',
-                                help='Only scan container image repositories (skip code repos & enforcers)')
+                                help='Only scan container image repositories (skip code repos, host images & enforcers)')
     license_breakdown_parser.add_argument('--only-code', dest='only_code', action='store_true',
-                                help='Only scan code repositories (skip image repos & enforcers)')
+                                help='Only scan code repositories (skip image repos, host images & enforcers)')
     license_breakdown_parser.add_argument('--only-enforcers', dest='only_enforcers', action='store_true',
-                                help='Only scan enforcers (skip all repositories)')
+                                help='Only scan enforcers (skip all repositories & host images)')
+    license_breakdown_parser.add_argument('--only-host-images', dest='only_host_images', action='store_true',
+                                help='Only scan host image repositories (skip image/code repos & enforcers)')
     license_breakdown_parser.add_argument('--skip-images', dest='skip_images', action='store_true',
-                                help='Skip container image repositories (keep code repos & enforcers)')
+                                help='Skip container image repositories (keep code repos, host images & enforcers)')
     license_breakdown_parser.add_argument('--skip-code', dest='skip_code', action='store_true',
-                                help='Skip code repositories (keep image repos & enforcers)')
+                                help='Skip code repositories (keep image repos, host images & enforcers)')
     license_breakdown_parser.add_argument('--skip-enforcers', dest='skip_enforcers', action='store_true',
-                                help='Skip enforcer scanning (keep all repositories)')
+                                help='Skip enforcer scanning (keep all repositories & host images)')
+    license_breakdown_parser.add_argument('--skip-host-images', dest='skip_host_images', action='store_true',
+                                help='Skip host image repositories (keep image/code repos & enforcers)')
 
     # Global scope filtering
     license_breakdown_parser.add_argument('--include-global', dest='include_global', action='store_true',
                                 help='Include Global scope in processing (default: excluded to avoid overload)')
+
+    # License host-images (dedicated host image breakdown by scope)
+    license_host_images_parser = license_subparsers.add_parser('host-images',
+                                help='Show host image repository counts by application scope (JSON by default, use -v for table)')
+    license_host_images_parser.add_argument('--csv-file', dest='csv_file', action='store',
+                                help='Export to CSV file')
+    license_host_images_parser.add_argument('--json-file', dest='json_file', action='store',
+                                help='Export to JSON file')
+    license_host_images_parser.add_argument('--include-global', dest='include_global', action='store_true',
+                                help='Include Global scope in processing (default: excluded)')
+    license_host_images_parser.add_argument('--list-repos', dest='list_repos', action='store_true',
+                                help='Include the list of unique repository names per scope in JSON output')
 
     # Parse the filtered arguments
     args = parser.parse_args(filtered_args)
@@ -653,7 +785,9 @@ def main():
             print("Error: No license subcommand specified")
             print("\nAvailable license commands:")
             print("  license show              Show license information")
+            print("  license count             Show utilization vs limits")
             print("  license breakdown         Show license breakdown by scope")
+            print("  license host-images       Show host image repo counts by scope")
             print("\nExample: python aqua_license_util.py license show")
             sys.exit(1)
     
@@ -737,8 +871,8 @@ def main():
                 print(f"DEBUG: Using CSP endpoint for license API: {csp_endpoint}")
 
             # Validate asset type filtering flags
-            only_flags = [args.only_images, args.only_code, args.only_enforcers]
-            skip_flags = [args.skip_images, args.skip_code, args.skip_enforcers]
+            only_flags = [args.only_images, args.only_code, args.only_enforcers, args.only_host_images]
+            skip_flags = [args.skip_images, args.skip_code, args.skip_enforcers, args.skip_host_images]
 
             # Check for conflicting --only flags
             if sum(only_flags) > 1:
@@ -757,9 +891,16 @@ def main():
 
             license_breakdown(csp_endpoint, token, args.verbose, args.debug,
                             args.csv_file, args.json_file, args.skip_repos,
-                            args.only_images, args.only_code, args.only_enforcers,
-                            args.skip_images, args.skip_code, args.skip_enforcers,
+                            args.only_images, args.only_code, args.only_enforcers, args.only_host_images,
+                            args.skip_images, args.skip_code, args.skip_enforcers, args.skip_host_images,
                             args.include_global)
+        elif args.command == 'license' and args.license_command == 'host-images':
+            if args.debug:
+                print(f"DEBUG: Using CSP endpoint for license API: {csp_endpoint}")
+
+            license_host_images(csp_endpoint, token, args.verbose, args.debug,
+                            args.csv_file, args.json_file, args.include_global,
+                            args.list_repos)
     except KeyboardInterrupt:
         if args.verbose:
             print('\nExecution interrupted by user')

@@ -88,9 +88,17 @@ def write_json_to_file(file, content):
             file.write('\n')
 
 
+def _enforcer_count(value):
+    """Normalise an enforcer count that may be a plain int or a {'connected': n} dict."""
+    if isinstance(value, dict):
+        return value.get('connected', 0)
+    return value or 0
+
+
 def generate_csv_for_license_breakdown(license_breakdown, filename):
     """Generate CSV file for license breakdown data"""
-    columns = ['scope', 'images', 'code', 'agents', 'kube', 'host', 'micro', 'nano', 'pod']
+    columns = ['scope', 'images', 'host_image_repos', 'code',
+               'agents', 'kube', 'host', 'micro', 'nano', 'pod']
 
     with open(filename, mode='w', newline='') as file:
         writer = csv.DictWriter(file, fieldnames=columns)
@@ -100,12 +108,13 @@ def generate_csv_for_license_breakdown(license_breakdown, filename):
             row = {
                 'scope': value['scope name'],
                 'images': value['repos'],
+                'host_image_repos': value.get('host_image_repos', 0),
                 'code': value.get('code_repos', 0),
-                'agents': value['agent']['connected'],
-                'kube': value['kube_enforcer']['connected'],
-                'host': value['host_enforcer']['connected'],
-                'micro': value['micro_enforcer']['connected'],
-                'nano': value['nano_enforcer']['connected'],
-                'pod': value['pod_enforcer']['connected']
+                'agents': _enforcer_count(value.get('agent', 0)),
+                'kube': _enforcer_count(value.get('kube_enforcer', 0)),
+                'host': _enforcer_count(value.get('host_enforcer', 0)),
+                'micro': _enforcer_count(value.get('micro_enforcer', 0)),
+                'nano': _enforcer_count(value.get('nano_enforcer', 0)),
+                'pod': _enforcer_count(value.get('pod_enforcer', 0))
             }
             writer.writerow(row)

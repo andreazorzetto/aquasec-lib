@@ -5,7 +5,7 @@ This library provides a clean API interface for interacting with Aqua Security's
 platform, extracted from the andreactl tool.
 """
 
-__version__ = "0.7.2"
+__version__ = "0.8.0"
 
 from .auth import (
     authenticate,
@@ -75,6 +75,15 @@ from .inventory import (
     get_stale_images_count,
     filter_images_by_registry,
     filter_images_by_repository
+)
+
+from .host_images import (
+    api_get_host_images,
+    get_host_image_count,
+    extract_repo_base,
+    get_all_host_images,
+    get_host_image_repos,
+    get_host_image_repo_count_by_scope
 )
 
 from .common import (
@@ -159,6 +168,14 @@ __all__ = [
     'get_stale_images_count',
     'filter_images_by_registry',
     'filter_images_by_repository',
+
+    # Host images (images discovered on hosts/VMs by enforcers)
+    'api_get_host_images',
+    'get_host_image_count',
+    'extract_repo_base',
+    'get_all_host_images',
+    'get_host_image_repos',
+    'get_host_image_repo_count_by_scope',
 
     # Common utilities
     'write_content_to_file',

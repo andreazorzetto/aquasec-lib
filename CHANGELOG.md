@@ -5,6 +5,29 @@ All notable changes to the aquasec library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-06-11
+
+### Added
+- **NEW**: Added `host_images.py` module for images discovered on hosts/VMs by enforcers
+  - `api_get_host_images()`: Raw call to `/api/v1/hosts/images` with optional application-scope filter (passed as a request param so spaces/special characters are URL-encoded correctly)
+  - `get_host_image_count()`: Total host *image* count for a scope (reads the `count` field, pagesize=1)
+  - `get_all_host_images()`: Fetch all host images for a scope with automatic pagination
+  - `extract_repo_base()`: Strip tag/digest from a host image name to get the repository base name (preserves registry/port prefixes, e.g. `host:5000/path/image:tag` → `host:5000/path/image`)
+  - `get_host_image_repos()`: Unique repository base names for a scope
+  - `get_host_image_repo_count_by_scope()`: Per-scope unique-repository counts — the unit relevant for licensing utilization
+- **NEW**: Comprehensive test suite for the host images module (17 tests covering repo-base extraction, pagination, and per-scope dedup)
+
+### Fixed
+- **CSV export**: `generate_csv_for_license_breakdown()` previously read enforcer counts as `value['agent']['connected']`, but the breakdown data carries flat integers (since the v0.4.0 enforcer structure change), so CSV export raised `TypeError: 'int' object is not subscriptable` on every row. It now normalises both int and legacy `{'connected': n}` shapes via `_enforcer_count()`, and adds a `host_image_repos` column.
+- **Tests**: Updated `test_inventory.py` and `test_code_repositories.py`, which still patched `requests.get`/`requests.post` after those modules were migrated to `_request_with_retry` in v0.7.x. The stale patch targets raised `AttributeError: module has no attribute 'requests'`; they now patch `_request_with_retry` and assert on its call signature (11 tests restored to green).
+
+### Why
+- Host images land in a single bucket in the General Images tab and are not attributed to an application scope there. The Host Images API *does* support scope filtering (the enforcer group that found the image is considered behind the scenes), which lets multi-tenant operators attribute host images to a scope for per-customer licensing breakdowns. The licensing unit is the repository (base name), not each image instance, hence the tag/digest-stripped dedup.
+
+### Technical Details
+- Host images endpoint lives on the tenant console (the `ese_url` from the sign-in JWT, e.g. `https://<tenant>.cloud.aquasec.com`), not the regional login/CSPM portal
+- Repository counting enumerates all host images per scope and collapses them to unique base names; `count` alone is image count, not repo count
+
 ## [0.7.2] - 2025-01-20
 
 ### Fixed

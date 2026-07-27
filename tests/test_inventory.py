@@ -22,8 +22,8 @@ from aquasec.inventory import (
 class TestApiGetInventoryImages:
     """Test the API call for listing inventory images"""
 
-    @patch('aquasec.inventory.requests.get')
-    def test_api_call_basic(self, mock_get):
+    @patch('aquasec.inventory._request_with_retry')
+    def test_api_call_basic(self, mock_req):
         """Test basic API call without filters"""
         mock_response = Mock()
         mock_response.status_code = 200
@@ -33,26 +33,27 @@ class TestApiGetInventoryImages:
             ],
             "count": 1
         }
-        mock_get.return_value = mock_response
+        mock_req.return_value = mock_response
 
         result = api_get_inventory_images("https://test.aquasec.com", "test-token")
 
         assert result.status_code == 200
-        mock_get.assert_called_once()
+        mock_req.assert_called_once()
 
-        call_args = mock_get.call_args
-        assert call_args[1]['url'] == "https://test.aquasec.com/api/v2/hub/inventory/assets/images/list"
-        assert call_args[1]['params']['page'] == 1
-        assert call_args[1]['params']['pagesize'] == 200
-        assert call_args[1]['headers']['Authorization'] == 'Bearer test-token'
+        args, kwargs = mock_req.call_args
+        assert args[0] == 'GET'
+        assert args[1] == "https://test.aquasec.com/api/v2/hub/inventory/assets/images/list"
+        assert args[2] == "test-token"
+        assert kwargs['params']['page'] == 1
+        assert kwargs['params']['pagesize'] == 200
 
-    @patch('aquasec.inventory.requests.get')
-    def test_api_call_with_filters(self, mock_get):
+    @patch('aquasec.inventory._request_with_retry')
+    def test_api_call_with_filters(self, mock_req):
         """Test API call with all filters"""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"result": [], "count": 0}
-        mock_get.return_value = mock_response
+        mock_req.return_value = mock_response
 
         api_get_inventory_images(
             "https://test.aquasec.com",
@@ -64,8 +65,8 @@ class TestApiGetInventoryImages:
             has_workloads=False
         )
 
-        call_args = mock_get.call_args
-        params = call_args[1]['params']
+        _, kwargs = mock_req.call_args
+        params = kwargs['params']
 
         assert params['page'] == 2
         assert params['pagesize'] == 100
@@ -73,13 +74,13 @@ class TestApiGetInventoryImages:
         assert params['first_found_date'] == "over|90|days"
         assert params['has_workloads'] == "false"
 
-    @patch('aquasec.inventory.requests.get')
-    def test_api_call_has_workloads_true(self, mock_get):
+    @patch('aquasec.inventory._request_with_retry')
+    def test_api_call_has_workloads_true(self, mock_req):
         """Test API call with has_workloads=True"""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"result": [], "count": 0}
-        mock_get.return_value = mock_response
+        mock_req.return_value = mock_response
 
         api_get_inventory_images(
             "https://test.aquasec.com",
@@ -87,17 +88,17 @@ class TestApiGetInventoryImages:
             has_workloads=True
         )
 
-        call_args = mock_get.call_args
-        params = call_args[1]['params']
+        _, kwargs = mock_req.call_args
+        params = kwargs['params']
         assert params['has_workloads'] == "true"
 
-    @patch('aquasec.inventory.requests.get')
-    def test_api_call_verbose_output(self, mock_get, capsys):
+    @patch('aquasec.inventory._request_with_retry')
+    def test_api_call_verbose_output(self, mock_req, capsys):
         """Test verbose output"""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"result": [], "count": 0}
-        mock_get.return_value = mock_response
+        mock_req.return_value = mock_response
 
         api_get_inventory_images(
             "https://test.aquasec.com",
@@ -112,28 +113,29 @@ class TestApiGetInventoryImages:
 class TestApiGetInventoryImagesCount:
     """Test the API call for getting image count"""
 
-    @patch('aquasec.inventory.requests.get')
-    def test_count_api_call(self, mock_get):
+    @patch('aquasec.inventory._request_with_retry')
+    def test_count_api_call(self, mock_req):
         """Test count API call"""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"count": 150}
-        mock_get.return_value = mock_response
+        mock_req.return_value = mock_response
 
         result = api_get_inventory_images_count("https://test.aquasec.com", "test-token")
 
         assert result.status_code == 200
 
-        call_args = mock_get.call_args
-        assert call_args[1]['url'] == "https://test.aquasec.com/api/v2/hub/inventory/assets/images/list/count"
+        args, _ = mock_req.call_args
+        assert args[0] == 'GET'
+        assert args[1] == "https://test.aquasec.com/api/v2/hub/inventory/assets/images/list/count"
 
-    @patch('aquasec.inventory.requests.get')
-    def test_count_api_call_with_filters(self, mock_get):
+    @patch('aquasec.inventory._request_with_retry')
+    def test_count_api_call_with_filters(self, mock_req):
         """Test count API call with filters"""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"count": 50}
-        mock_get.return_value = mock_response
+        mock_req.return_value = mock_response
 
         api_get_inventory_images_count(
             "https://test.aquasec.com",
@@ -143,8 +145,8 @@ class TestApiGetInventoryImagesCount:
             has_workloads=False
         )
 
-        call_args = mock_get.call_args
-        params = call_args[1]['params']
+        _, kwargs = mock_req.call_args
+        params = kwargs['params']
 
         assert params['scope'] == "production"
         assert params['first_found_date'] == "last|60|days"
@@ -154,29 +156,29 @@ class TestApiGetInventoryImagesCount:
 class TestApiDeleteImages:
     """Test the API call for deleting images"""
 
-    @patch('aquasec.inventory.requests.post')
-    def test_delete_api_call(self, mock_post):
+    @patch('aquasec.inventory._request_with_retry')
+    def test_delete_api_call(self, mock_req):
         """Test delete API call"""
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_post.return_value = mock_response
+        mock_req.return_value = mock_response
 
         result = api_delete_images("https://test.aquasec.com", "test-token", [1, 2, 3])
 
         assert result.status_code == 200
 
-        call_args = mock_post.call_args
-        assert call_args[1]['url'] == "https://test.aquasec.com/api/v2/images/actions/delete"
-        assert call_args[1]['json'] == {"uids": [1, 2, 3]}
-        assert call_args[1]['headers']['Authorization'] == 'Bearer test-token'
-        assert call_args[1]['headers']['Content-Type'] == 'application/json'
+        args, kwargs = mock_req.call_args
+        assert args[0] == 'POST'
+        assert args[1] == "https://test.aquasec.com/api/v2/images/actions/delete"
+        assert kwargs['json'] == {"uids": [1, 2, 3]}
+        assert kwargs['headers']['Content-Type'] == 'application/json'
 
-    @patch('aquasec.inventory.requests.post')
-    def test_delete_api_call_verbose(self, mock_post, capsys):
+    @patch('aquasec.inventory._request_with_retry')
+    def test_delete_api_call_verbose(self, mock_req, capsys):
         """Test delete API call with verbose output"""
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_post.return_value = mock_response
+        mock_req.return_value = mock_response
 
         api_delete_images("https://test.aquasec.com", "test-token", [1, 2, 3], verbose=True)
 
@@ -184,17 +186,17 @@ class TestApiDeleteImages:
         assert "POST https://test.aquasec.com/api/v2/images/actions/delete" in captured.out
         assert "Deleting 3 images" in captured.out
 
-    @patch('aquasec.inventory.requests.post')
-    def test_delete_empty_list(self, mock_post):
+    @patch('aquasec.inventory._request_with_retry')
+    def test_delete_empty_list(self, mock_req):
         """Test delete with empty list"""
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_post.return_value = mock_response
+        mock_req.return_value = mock_response
 
         api_delete_images("https://test.aquasec.com", "test-token", [])
 
-        call_args = mock_post.call_args
-        assert call_args[1]['json'] == {"uids": []}
+        _, kwargs = mock_req.call_args
+        assert kwargs['json'] == {"uids": []}
 
 
 class TestGetStaleImagesCount:

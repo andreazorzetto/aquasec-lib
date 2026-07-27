@@ -87,7 +87,7 @@ class TestCodeRepositoryIntegration:
 
         # Test cases that should work with the license utility
         test_cases = [
-            ("https://c1fae5dbe2.cloud.aquasec.com", "https://api.supply-chain.cloud.aquasec.com"),
+            ("https://tenant123.cloud.aquasec.com", "https://api.supply-chain.cloud.aquasec.com"),
             ("https://test.eu-1.cloud.aquasec.com", "https://api.eu-1.supply-chain.cloud.aquasec.com"),
         ]
 

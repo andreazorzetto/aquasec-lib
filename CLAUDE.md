@@ -61,8 +61,9 @@ cd examples/image-cleanup-utility && python aqua_image_cleanup.py --help
 - **functions.py**: Serverless functions API calls (added in v0.4.0)
 - **vms.py**: VM inventory management with filtering (added in v0.5.0)
 - **inventory.py**: Hub inventory images API (added in v0.6.0)
+- **host_images.py**: Images discovered on hosts/VMs by enforcers, per-scope repo counts (added in v0.8.0)
 - **scopes.py**: Application scope functions
-- **common.py**: Utility functions for data export and processing
+- **common.py**: Utility functions and `_request_with_retry` (auto re-auth on 401)
 
 ### Authentication Flow
 1. Credentials stored via `ConfigManager` with encryption
@@ -135,9 +136,11 @@ Secure, profile-based credential storage with:
 
 ## Version Information
 
-Current version: 0.6.0 (see setup.py and aquasec/__init__.py)
+Current version: 0.8.0 (see setup.py and aquasec/__init__.py)
 
 Major versions:
 - v0.4.0: Added serverless functions support, enforcer optimizations
 - v0.5.0: Added comprehensive VM inventory module
 - v0.6.0: Added repository deletion, Hub inventory images module, and bulk delete utilities
+- v0.7.x: Auth timeouts, file-based bulk image cleanup, automatic token refresh on 401
+- v0.8.0: Added host images module (per-scope repository counts for licensing)
