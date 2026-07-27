@@ -20,12 +20,17 @@ jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      run-all: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' }}
+      # Path filtering is only meaningful on pull requests, where there is a base
+      # to diff against. Everything else (push, schedule, dispatch, and release —
+      # note a workflow_call reports the CALLER's event, e.g. 'release') runs the
+      # full matrix, so a release is gated on the complete suite.
+      run-all: ${{ github.event_name != 'pull_request' }}
       license-utility-changed: ${{ steps.changes.outputs.license-utility }}
       repo-breakdown-changed: ${{ steps.changes.outputs.repo-breakdown }}
       vm-extract-changed: ${{ steps.changes.outputs.vm-extract }}
       repo-delete-utility-changed: ${{ steps.changes.outputs.repo-delete-utility }}
       image-cleanup-utility-changed: ${{ steps.changes.outputs.image-cleanup-utility }}
+      global-scope-extract-changed: ${{ steps.changes.outputs.global-scope-extract }}
       dependencies-changed: ${{ steps.changes.outputs.dependencies }}
     steps:
     - uses: actions/checkout@v4
@@ -43,6 +48,8 @@ jobs:
             - 'examples/repo-delete-utility/**'
           image-cleanup-utility:
             - 'examples/image-cleanup-utility/**'
+          global-scope-extract:
+            - 'examples/global-scope-extract/**'
           dependencies:
             - '**/requirements*.txt'
             - 'setup.py'
@@ -261,6 +268,42 @@ jobs:
       with:
         sarif_file: 'trivy-image-cleanup-utility.sarif'
         category: 'image-cleanup-utility'
+
+  security-scan-global-scope-extract:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.global-scope-extract-changed == 'true'
+    runs-on: ubuntu-latest
+    name: Security Scan - Global Scope Extract
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner on global scope extract
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: 'examples/global-scope-extract/'
+        format: 'table'
+        exit-code: '1'
+        severity: 'CRITICAL,HIGH'
+        ignore-unfixed: true
+
+    - name: Run Trivy vulnerability scanner for SARIF (Global Scope Extract)
+      uses: aquasecurity/trivy-action@master
+      if: always()
+      with:
+        scan-type: 'fs'
+        scan-ref: 'examples/global-scope-extract/'
+        format: 'sarif'
+        output: 'trivy-global-scope-extract.sarif'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+        ignore-unfixed: true
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-global-scope-extract.sarif'
+        category: 'global-scope-extract'
 
   dependency-check:
     needs: detect-changes

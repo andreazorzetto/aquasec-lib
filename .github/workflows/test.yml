@@ -18,7 +18,11 @@ jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      run-all: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' }}
+      # Path filtering is only meaningful on pull requests, where there is a base
+      # to diff against. Everything else (push, schedule, dispatch, and release —
+      # note a workflow_call reports the CALLER's event, e.g. 'release') runs the
+      # full matrix, so a release is gated on the complete suite.
+      run-all: ${{ github.event_name != 'pull_request' }}
       license-utility-changed: ${{ steps.changes.outputs.license-utility }}
       repo-breakdown-changed: ${{ steps.changes.outputs.repo-breakdown }}
       vm-extract-changed: ${{ steps.changes.outputs.vm-extract }}
