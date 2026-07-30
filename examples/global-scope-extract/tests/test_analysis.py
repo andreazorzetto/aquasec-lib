@@ -16,6 +16,25 @@ def test_repo_key():
     assert gse.repo_key({}) == "unknown/unknown"
 
 
+def test_resolve_output_path_keeps_reports_out_of_cwd(tmp_path, monkeypatch):
+    """A named file must not land next to the source; only an explicit
+    directory component opts out of the run's output folder."""
+    monkeypatch.chdir(tmp_path)
+    out = "output_20260730-120000"
+
+    # flag given bare -> default name inside the output folder
+    assert gse.resolve_output_path(gse.DEFAULT_OUTPUT, out, "report.xlsx") == \
+        os.path.join(out, "report.xlsx")
+    # bare file name -> also inside the output folder (the reported surprise)
+    assert gse.resolve_output_path("report.xlsx", out, "report.xlsx") == \
+        os.path.join(out, "report.xlsx")
+    # a directory component means "put it exactly here"
+    assert gse.resolve_output_path("./report.xlsx", out, "report.xlsx") == "./report.xlsx"
+    assert gse.resolve_output_path("sub/report.xlsx", out, "report.xlsx") == "sub/report.xlsx"
+    assert gse.resolve_output_path(str(tmp_path / "abs.xlsx"), out, "report.xlsx") == \
+        str(tmp_path / "abs.xlsx")
+
+
 def test_container_row_omits_removed_exposure_field():
     row = gse.container_row({"container_uid": "u", "name": "n", "image_name": "i:1",
                              "cluster_name": "c", "namespace_name": "ns", "host_name": "h",

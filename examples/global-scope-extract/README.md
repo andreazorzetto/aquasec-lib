@@ -72,8 +72,10 @@ right; the unscoped bucket sits at the top.
 `report.xlsx` has one sheet per view: Summary, Scope Coverage, Unscoped
 Repositories, By Registry, Unscoped Containers, By Cluster.
 
-Use `--output-dir DIR` to choose the folder, or pass an explicit path to any
-output flag (`--xlsx /tmp/report.xlsx`) to control a single file.
+Reports stay in that folder whether you name the files or not — `--xlsx` and
+`--xlsx report.xlsx` both write `output_<timestamp>/report.xlsx`. To put a file
+somewhere specific, include a directory: `--xlsx /tmp/report.xlsx` or
+`--xlsx ./report.xlsx`. Use `--output-dir DIR` to change the folder itself.
 
 ## Common commands
 
@@ -107,8 +109,9 @@ python aqua_global_scope_extract.py extract -d
 | `--output-dir DIR` | Where reports go (default `output_<timestamp>`) |
 | `--title TEXT` | Title shown on the workbook and dashboard |
 
-Output flags work with or without a path: bare, they use a default name inside
-the run's output folder; with a path, that exact path is used.
+Output flags work with or without a file name; either way the file goes in the
+run's output folder. Include a directory (`./x`, `sub/x`, `/tmp/x`) to place it
+somewhere specific.
 
 Global options (`-v`, `-d`, `-p`) work before or after the command.
 
@@ -136,8 +139,7 @@ keeping the snapshots:
 
 ```bash
 python aqua_global_scope_extract.py extract -p production \
-  --json-file "reports/coverage-$(date +%F).json" \
-  --dashboard "reports/coverage-$(date +%F).html"
+  --output-dir "reports/$(date +%F)" --json-file --dashboard
 ```
 
 ## Notes

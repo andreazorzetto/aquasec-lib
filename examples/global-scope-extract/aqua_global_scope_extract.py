@@ -60,19 +60,33 @@ def resolve_output_path(value, output_dir, default_name):
     """
     Resolve an output flag to a concrete path, creating the directory as needed.
 
-    A path supplied on the command line is honoured as-is; a bare flag lands in
-    ``output_dir`` under ``default_name``. Reports therefore default to a
-    timestamped folder instead of the current working directory.
+    Reports go into ``output_dir`` unless a location is explicitly given:
+
+    - flag with no value (``--xlsx``)      -> ``<output_dir>/<default_name>``
+    - bare file name (``--xlsx r.xlsx``)   -> ``<output_dir>/r.xlsx``
+    - path with a directory component
+      (``--xlsx ./r.xlsx``, ``/tmp/r.xlsx``, ``sub/r.xlsx``) -> used as given
+
+    A bare name is deliberately placed in the output folder: naming a file is not
+    the same as asking for it in the current directory, and dropping reports next
+    to the source is what we are trying to avoid. Include a directory (even
+    ``./``) to choose the location yourself.
 
     Args:
-        value: The flag value (a path, or DEFAULT_OUTPUT for a bare flag)
+        value: The flag value (DEFAULT_OUTPUT when the flag was given bare)
         output_dir: Directory for this run's reports
         default_name: File name to use when the flag was given bare
 
     Returns:
         The resolved path.
     """
-    path = os.path.join(output_dir, default_name) if value == DEFAULT_OUTPUT else value
+    if value == DEFAULT_OUTPUT:
+        path = os.path.join(output_dir, default_name)
+    elif os.path.dirname(value):
+        path = value
+    else:
+        path = os.path.join(output_dir, value)
+
     parent = os.path.dirname(os.path.abspath(path))
     os.makedirs(parent, exist_ok=True)
     return path
@@ -596,7 +610,14 @@ def main():
                 json.dump(result, f, indent=2)
             written_paths.append(path)
         if args.csv_dir:
-            csv_dir = output_dir if args.csv_dir == DEFAULT_OUTPUT else args.csv_dir
+            # Same rule as the file flags: a bare name lands inside the output
+            # folder, a path with a directory component is used as given.
+            if args.csv_dir == DEFAULT_OUTPUT:
+                csv_dir = output_dir
+            elif os.path.dirname(args.csv_dir):
+                csv_dir = args.csv_dir
+            else:
+                csv_dir = os.path.join(output_dir, args.csv_dir)
             written_paths.extend(write_csv_files(result, csv_dir))
         if args.xlsx:
             path = resolve_output_path(args.xlsx, output_dir, "report.xlsx")
