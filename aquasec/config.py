@@ -269,7 +269,11 @@ def authenticate_with(config, creds):
                 'AQUA_ROLE': config.get('api_role', 'Administrator'),
                 'AQUA_METHODS': config.get('api_methods', 'ANY'),
                 'AQUA_ENDPOINT': config['api_endpoint'],
-                'CSP_ENDPOINT': config.get('csp_endpoint', '') or '',
+                # authenticate() insists on a non-empty CSP_ENDPOINT for this path
+                # even though signing in never uses it (only AQUA_* is signed).
+                # During setup the real console URL is still unknown -- it is read
+                # from the token moments later -- so stand in a placeholder.
+                'CSP_ENDPOINT': config.get('csp_endpoint') or 'https://console.pending',
             }
         else:
             env_vars = {
@@ -512,12 +516,16 @@ def interactive_setup(profile_name=None, debug=False):
             else:
                 config['api_endpoint'] = input("Enter API endpoint URL: ").strip()
     
-    # CSP endpoint. For SaaS this can be read straight off the token, so it is
-    # optional here; anything entered is normalised (scheme/port/path tolerated).
-    print("\nEnter your Aqua Console URL")
-    print("Example: xyz.cloud.aquasec.com or https://aqua.company.internal:8443")
-    print("Leave blank to detect it automatically (Aqua SaaS)")
-    config['csp_endpoint'] = normalize_console_url(input("Console URL: ").strip()) or ''
+    # Console URL. SaaS tokens carry it (csp_metadata.urls.ese_url), so it is
+    # detected after sign-in instead of being asked for. On-prem tokens have no
+    # such metadata and sign-in goes to the console itself, so it is required up
+    # front there. Anything entered is normalised (scheme/port/path tolerated).
+    if need_endpoint:
+        config['csp_endpoint'] = ''  # detected from the token after authenticating
+    else:
+        print("\nEnter your Aqua Console URL")
+        print("Example: aqua.company.internal or https://aqua.company.internal:8443")
+        config['csp_endpoint'] = normalize_console_url(input("Console URL: ").strip()) or ''
     
     # Collect credentials based on auth method
     if config['auth_method'] == 'api_keys':
@@ -550,9 +558,13 @@ def interactive_setup(profile_name=None, debug=False):
                 config['csp_endpoint'] = detected['console']
                 print(f"✓ Console URL detected: {config['csp_endpoint']}")
             else:
-                print("✗ Could not detect the console URL from the token "
-                      "(expected for on-prem). Please re-run and enter it.")
-                return False
+                # No tenant metadata in the token; ask rather than dead-end.
+                print("! Could not detect the console URL from the token.")
+                config['csp_endpoint'] = normalize_console_url(
+                    input("Console URL: ").strip()) or ''
+                if not config['csp_endpoint']:
+                    print("\nConfiguration not saved - a console URL is required.")
+                    return False
         elif detected['gateway'] and config['csp_endpoint'] == detected['gateway']:
             # Entered the gateway host; we already know the right one.
             print(f"! {config['csp_endpoint']} is the tenant gateway, not the console.")

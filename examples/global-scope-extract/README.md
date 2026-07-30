@@ -27,9 +27,17 @@ exist. Once activated, `python` inside the venv is correct.
 python aqua_global_scope_extract.py setup
 ```
 
-It asks for your region and credentials. The console URL is detected
-automatically for Aqua SaaS, so you can leave it blank; if you do enter one it's
-normalised and then verified before the profile is saved.
+On Aqua SaaS it only asks for your region and credentials — the console URL is
+read from the token and verified before the profile is saved:
+
+```
+Testing connection...
+✓ Authentication successful!
+✓ Console URL detected: https://<tenant>.cloud.aquasec.com
+✓ Console URL verified.
+```
+
+On-prem is asked for the console URL, since sign-in goes to the console itself.
 
 **3. Run it**
 

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Console URL normalisation**: `normalize_console_url()` accepts the forms people actually paste and returns `scheme://host[:port]` — bare host (`tenant.cloud.aquasec.com`), explicit `:443`, trailing slash, path/fragment, mixed case. Default ports are dropped; non-default ports are preserved for on-prem consoles served on e.g. `:8443`.
-- **Console URL auto-detection**: Aqua SaaS tokens carry the tenant's URLs in `csp_metadata.urls`. `decode_token_claims()` and `get_console_urls_from_token()` read them, so the console URL no longer has to be typed — `interactive_setup()` detects it when the prompt is left blank.
+- **Console URL auto-detection**: Aqua SaaS tokens carry the tenant's URLs in `csp_metadata.urls`. `decode_token_claims()` and `get_console_urls_from_token()` read them, so `interactive_setup()` no longer asks for the console URL on SaaS at all — it is detected after sign-in and verified before saving. On-prem is still prompted, because sign-in there goes to the console itself.
 - **Console URL validation**: `validate_console_url()` probes the console API and reports whether the URL really serves it.
 - `get_console_url()` reads `CSP_ENDPOINT` from the environment and normalises it, so env/.env users get the same handling as profile users.
 - `authenticate_with()` returns the token for an unsaved config/creds pair (`test_connection()` keeps its boolean contract).
