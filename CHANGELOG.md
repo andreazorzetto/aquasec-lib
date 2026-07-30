@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `get_console_url()` reads `CSP_ENDPOINT` from the environment and normalises it, so env/.env users get the same handling as profile users.
 - `authenticate_with()` returns the token for an unsaved config/creds pair (`test_connection()` keeps its boolean contract).
 
+### Changed
+- Setup's "Set '<profile>' as the default profile?" question now defaults to yes — the profile you just configured is almost always the one you want to use next. Answering `n`/`no` still declines.
+
 ### Fixed
 - **Broken profiles could be saved silently.** Sign-in happens against the regional API endpoint, so it succeeds even when the console URL is wrong; the profile then failed on every data call. Setup now verifies the console URL before saving and refuses to save a profile that cannot serve the API.
 - **The tenant gateway URL is now detected.** Using the `-gw` host (e.g. `tenant-gw.cloud.aquasec.com`) is an easy mistake: it authenticates, then answers gRPC (HTTP 415) instead of REST. Setup recognises it, names the problem, and substitutes the correct console URL from the token.

@@ -617,13 +617,15 @@ def interactive_setup(profile_name=None, debug=False):
                 print(f"\n✓ '{profile_name}' set as default profile (first profile)")
             else:
                 # Ask if should be default
-                should_set_default = False
+                # Defaults to yes: the profile just set up is almost always the
+                # one you want to use next.
+                should_set_default = True
                 if HAS_INQUIRER:
                     try:
                         questions = [
                             inquirer.Confirm('set_default',
                                             message=f"Set '{profile_name}' as the default profile?",
-                                            default=False)
+                                            default=True)
                         ]
                         answers = inquirer.prompt(questions)
                         should_set_default = answers['set_default']
@@ -631,11 +633,11 @@ def interactive_setup(profile_name=None, debug=False):
                         # Fall back to simple input
                         if debug:
                             print(f"DEBUG: Inquirer failed for default profile prompt: {e}")
-                        set_default = input(f"\nSet '{profile_name}' as the default profile? (y/N): ").lower()
-                        should_set_default = set_default == 'y'
+                        set_default = input(f"\nSet '{profile_name}' as the default profile? (Y/n): ").lower()
+                        should_set_default = set_default not in ('n', 'no')
                 else:
-                    set_default = input(f"\nSet '{profile_name}' as the default profile? (y/N): ").lower()
-                    should_set_default = set_default == 'y'
+                    set_default = input(f"\nSet '{profile_name}' as the default profile? (Y/n): ").lower()
+                    should_set_default = set_default not in ('n', 'no')
                 
                 if should_set_default:
                     config_mgr.set_default_profile(profile_name)
