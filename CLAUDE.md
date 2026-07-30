@@ -138,7 +138,7 @@ Secure, profile-based credential storage with:
 
 ## Version Information
 
-Current version: 0.9.0 (see setup.py and aquasec/__init__.py)
+Current version: 0.10.0 (see setup.py and aquasec/__init__.py)
 
 Major versions:
 - v0.4.0: Added serverless functions support, enforcer optimizations
@@ -147,3 +147,4 @@ Major versions:
 - v0.7.x: Auth timeouts, file-based bulk image cleanup, automatic token refresh on 401
 - v0.8.0: Added host images module (per-scope repository counts for licensing)
 - v0.9.0: Added running-containers module and the global-scope-extract utility (unscoped repositories/containers)
+- v0.10.0: Console URL normalisation, auto-detection from the auth token, and validation during setup

@@ -32,6 +32,7 @@ from aquasec import (
     get_all_containers,
     get_app_scopes,
     container_key,
+    get_console_url,
     load_profile_credentials,
     interactive_setup,
     list_profiles,
@@ -49,6 +50,32 @@ from aquasec import (
 __version__ = "0.1.0"
 
 GLOBAL_SCOPE = "Global"
+
+# Sentinel meaning "no path given for this output flag - use the default name
+# inside the run's output directory".
+DEFAULT_OUTPUT = "<default>"
+
+
+def resolve_output_path(value, output_dir, default_name):
+    """
+    Resolve an output flag to a concrete path, creating the directory as needed.
+
+    A path supplied on the command line is honoured as-is; a bare flag lands in
+    ``output_dir`` under ``default_name``. Reports therefore default to a
+    timestamped folder instead of the current working directory.
+
+    Args:
+        value: The flag value (a path, or DEFAULT_OUTPUT for a bare flag)
+        output_dir: Directory for this run's reports
+        default_name: File name to use when the flag was given bare
+
+    Returns:
+        The resolved path.
+    """
+    path = os.path.join(output_dir, default_name) if value == DEFAULT_OUTPUT else value
+    parent = os.path.dirname(os.path.abspath(path))
+    os.makedirs(parent, exist_ok=True)
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -408,11 +435,19 @@ def build_parser():
     group = extract_parser.add_mutually_exclusive_group()
     group.add_argument("--repos-only", action="store_true", help="Only analyze repositories")
     group.add_argument("--containers-only", action="store_true", help="Only analyze containers")
-    extract_parser.add_argument("--json-file", dest="json_file", help="Write full result to a JSON file")
-    extract_parser.add_argument("--csv-dir", dest="csv_dir", help="Write CSV files into this directory")
-    extract_parser.add_argument("--xlsx", dest="xlsx", help="Write a multi-sheet Excel workbook to this path")
-    extract_parser.add_argument("--dashboard", dest="dashboard",
-                                help="Write a self-contained HTML dashboard to this path")
+    # Output flags take an optional path. Given bare (e.g. just --dashboard) the
+    # file is written into the run's output directory with a default name, which
+    # keeps generated reports out of the project root.
+    extract_parser.add_argument("--json-file", dest="json_file", nargs="?", const=DEFAULT_OUTPUT,
+                                help="Write full result as JSON (default: <output-dir>/report.json)")
+    extract_parser.add_argument("--csv-dir", dest="csv_dir", nargs="?", const=DEFAULT_OUTPUT,
+                                help="Write CSV files (default: <output-dir>/)")
+    extract_parser.add_argument("--xlsx", dest="xlsx", nargs="?", const=DEFAULT_OUTPUT,
+                                help="Write a multi-sheet Excel workbook (default: <output-dir>/report.xlsx)")
+    extract_parser.add_argument("--dashboard", dest="dashboard", nargs="?", const=DEFAULT_OUTPUT,
+                                help="Write a self-contained HTML dashboard (default: <output-dir>/dashboard.html)")
+    extract_parser.add_argument("--output-dir", dest="output_dir",
+                                help="Directory for generated reports (default: output_<timestamp>)")
     extract_parser.add_argument("--title", dest="title",
                                 help="Report/dashboard title (e.g. an organization or tenant name)")
 
@@ -524,7 +559,8 @@ def main():
         print(f"Authentication failed: {e}" if args.verbose else json.dumps({"error": f"Authentication failed: {e}"}))
         sys.exit(1)
 
-    csp_endpoint = os.environ.get("CSP_ENDPOINT")
+    # Normalised, so a bare host / :443 / trailing slash all work.
+    csp_endpoint = get_console_url()
     if not csp_endpoint:
         msg = "CSP_ENDPOINT environment variable not set"
         print(f"Error: {msg}" if args.verbose else json.dumps({"error": msg}))
@@ -546,35 +582,42 @@ def main():
             print(f"Error: {e}" if args.verbose else json.dumps({"error": str(e)}))
             sys.exit(1)
 
-        generated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        report_title = args.title or "Unscoped Inventory — Global Scope Only"
+        now = datetime.datetime.now()
+        generated_at = now.strftime("%Y-%m-%d %H:%M")
+        report_title = args.title or "Application-scope Coverage"
+        # One folder per run keeps reports together and out of the project root.
+        output_dir = args.output_dir or f"output_{now.strftime('%Y%m%d-%H%M%S')}"
+        written_paths = []
 
         if args.json_file:
+            path = resolve_output_path(args.json_file, output_dir, "report.json")
             # Overwrite (not append): a report is a single clean JSON document.
-            with open(args.json_file, "w", encoding="utf-8") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 json.dump(result, f, indent=2)
-            if args.verbose:
-                print(f"Wrote JSON to {args.json_file}")
+            written_paths.append(path)
         if args.csv_dir:
-            written = write_csv_files(result, args.csv_dir)
-            if args.verbose:
-                for p in written:
-                    print(f"Wrote CSV: {p}")
+            csv_dir = output_dir if args.csv_dir == DEFAULT_OUTPUT else args.csv_dir
+            written_paths.extend(write_csv_files(result, csv_dir))
         if args.xlsx:
+            path = resolve_output_path(args.xlsx, output_dir, "report.xlsx")
             try:
                 import reporting
-                reporting.write_xlsx(result, args.xlsx, title=report_title, generated_at=generated_at)
-                if args.verbose:
-                    print(f"Wrote Excel workbook: {args.xlsx}")
+                reporting.write_xlsx(result, path, title=report_title, generated_at=generated_at)
+                written_paths.append(path)
             except ImportError:
                 msg = "Excel export requires openpyxl (pip install openpyxl)"
                 print(f"Error: {msg}" if args.verbose else json.dumps({"error": msg}))
                 sys.exit(1)
         if args.dashboard:
+            path = resolve_output_path(args.dashboard, output_dir, "dashboard.html")
             import reporting
-            reporting.write_dashboard(result, args.dashboard, title=report_title, generated_at=generated_at)
-            if args.verbose:
-                print(f"Wrote dashboard: {args.dashboard}")
+            reporting.write_dashboard(result, path, title=report_title, generated_at=generated_at)
+            written_paths.append(path)
+
+        if written_paths and args.verbose:
+            print(f"\nReports written to {os.path.dirname(os.path.abspath(written_paths[0]))}:")
+            for p in written_paths:
+                print(f"  {os.path.basename(p)}")
 
         if args.verbose:
             print_tables(result)

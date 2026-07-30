@@ -5,6 +5,23 @@ All notable changes to the aquasec library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-07-30
+
+### Added
+- **Console URL normalisation**: `normalize_console_url()` accepts the forms people actually paste and returns `scheme://host[:port]` — bare host (`tenant.cloud.aquasec.com`), explicit `:443`, trailing slash, path/fragment, mixed case. Default ports are dropped; non-default ports are preserved for on-prem consoles served on e.g. `:8443`.
+- **Console URL auto-detection**: Aqua SaaS tokens carry the tenant's URLs in `csp_metadata.urls`. `decode_token_claims()` and `get_console_urls_from_token()` read them, so the console URL no longer has to be typed — `interactive_setup()` detects it when the prompt is left blank.
+- **Console URL validation**: `validate_console_url()` probes the console API and reports whether the URL really serves it.
+- `get_console_url()` reads `CSP_ENDPOINT` from the environment and normalises it, so env/.env users get the same handling as profile users.
+- `authenticate_with()` returns the token for an unsaved config/creds pair (`test_connection()` keeps its boolean contract).
+
+### Fixed
+- **Broken profiles could be saved silently.** Sign-in happens against the regional API endpoint, so it succeeds even when the console URL is wrong; the profile then failed on every data call. Setup now verifies the console URL before saving and refuses to save a profile that cannot serve the API.
+- **The tenant gateway URL is now detected.** Using the `-gw` host (e.g. `tenant-gw.cloud.aquasec.com`) is an easy mistake: it authenticates, then answers gRPC (HTTP 415) instead of REST. Setup recognises it, names the problem, and substitutes the correct console URL from the token.
+- Profiles are normalised on read as well as on write, so existing profiles holding an unnormalised URL keep working without re-running setup.
+
+### Why
+- Reported from a first-run on a clean machine: a console URL entered with the `-gw` suffix produced a profile that authenticated successfully but failed on every subsequent call, with nothing pointing at the cause.
+
 ## [0.9.0] - 2026-07-24
 
 ### Added

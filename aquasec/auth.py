@@ -3,6 +3,7 @@ Authentication module for Andrea library
 Handles authentication with Aqua Security platform
 """
 
+import base64
 import hashlib
 import hmac
 import json
@@ -10,6 +11,54 @@ import requests
 import sys
 import time
 from os import environ
+
+from .common import normalize_console_url
+
+
+def decode_token_claims(token):
+    """
+    Decode the claims (payload) of an Aqua bearer token.
+
+    The signature is NOT verified -- this only reads the claims the server
+    already issued to us, to discover tenant metadata such as the console URL.
+
+    Args:
+        token: A JWT bearer token
+
+    Returns:
+        Dict of claims, or an empty dict if the token cannot be decoded.
+    """
+    try:
+        payload = token.split('.')[1]
+        payload += '=' * (-len(payload) % 4)  # restore base64 padding
+        return json.loads(base64.urlsafe_b64decode(payload))
+    except Exception:
+        return {}
+
+
+def get_console_urls_from_token(token):
+    """
+    Extract the tenant console and gateway URLs from a bearer token.
+
+    Aqua SaaS tokens carry ``csp_metadata.urls`` with:
+      - ``ese_url``    -- the console (REST API) host
+      - ``ese_gw_url`` -- the gateway host (gRPC), which is NOT the console
+
+    Both are returned normalised (with an https:// scheme). On-prem tokens do
+    not carry this metadata, in which case both values are None.
+
+    Args:
+        token: A valid bearer token
+
+    Returns:
+        Dict with 'console' and 'gateway' keys (values may be None).
+    """
+    claims = decode_token_claims(token)
+    urls = (claims.get('csp_metadata') or {}).get('urls') or {}
+    return {
+        'console': normalize_console_url(urls.get('ese_url')) or None,
+        'gateway': normalize_console_url(urls.get('ese_gw_url')) or None,
+    }
 
 
 def authenticate(verbose=False):

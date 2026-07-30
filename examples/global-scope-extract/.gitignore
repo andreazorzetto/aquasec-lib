@@ -2,6 +2,7 @@
 # container/cluster names, hosts). NEVER commit them — this protection must be
 # local so it travels if this folder is extracted into its own repository.
 output/
+output_*/
 *.json
 *.csv
 *.xlsx

@@ -47,3 +47,4 @@ Thumbs.db
 /test_*.py
 # Generated report artifacts from global-scope-extract (may contain customer data)
 examples/*/output/
+examples/*/output_*/

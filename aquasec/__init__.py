@@ -5,14 +5,16 @@ This library provides a clean API interface for interacting with Aqua Security's
 platform, extracted from the andreactl tool.
 """
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"
 
 from .auth import (
     authenticate,
     api_auth,
     user_pass_saas_auth,
     user_pass_onprem_auth,
-    extract_token_from_auth
+    extract_token_from_auth,
+    decode_token_claims,
+    get_console_urls_from_token
 )
 
 from .licenses import (
@@ -97,13 +99,17 @@ from .containers import (
 from .common import (
     write_content_to_file,
     write_json_to_file,
-    generate_csv_for_license_breakdown
+    generate_csv_for_license_breakdown,
+    normalize_console_url,
+    validate_console_url,
+    get_console_url
 )
 
 from .config import (
     ConfigManager,
     load_profile_credentials,
     test_connection,
+    authenticate_with,
     interactive_setup,
     list_profiles,
     get_profile_info,
@@ -122,6 +128,8 @@ __all__ = [
     'user_pass_saas_auth',
     'user_pass_onprem_auth',
     'extract_token_from_auth',
+    'decode_token_claims',
+    'get_console_urls_from_token',
     
     # Licenses
     'api_get_licenses',
@@ -196,11 +204,15 @@ __all__ = [
     'write_content_to_file',
     'write_json_to_file',
     'generate_csv_for_license_breakdown',
+    'normalize_console_url',
+    'validate_console_url',
+    'get_console_url',
     
     # Configuration management
     'ConfigManager',
     'load_profile_credentials',
     'test_connection',
+    'authenticate_with',
     'interactive_setup',
     'list_profiles',
     'get_profile_info',

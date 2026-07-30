@@ -6,9 +6,122 @@ import csv
 import json
 import requests
 from os.path import exists
+from urllib.parse import urlparse
 
 # Module-level token cache for re-authentication
 _cached_token = None
+
+
+def normalize_console_url(url):
+    """
+    Normalise an Aqua console URL to ``scheme://host[:port]``.
+
+    Accepts the forms people actually paste, e.g.::
+
+        tenant.cloud.aquasec.com            -> https://tenant.cloud.aquasec.com
+        tenant.cloud.aquasec.com:443        -> https://tenant.cloud.aquasec.com
+        https://tenant.cloud.aquasec.com/   -> https://tenant.cloud.aquasec.com
+        HTTPS://Tenant.Cloud.Aquasec.Com    -> https://tenant.cloud.aquasec.com
+        http://aqua.internal:8443/#/home    -> http://aqua.internal:8443
+
+    The scheme defaults to https when omitted. Default ports (443 for https,
+    80 for http) are dropped; any other port is preserved, since on-prem
+    consoles are commonly served on a custom port. Paths, query strings and
+    fragments are discarded -- API calls append their own path.
+
+    Args:
+        url: The console URL as entered (may be None/empty)
+
+    Returns:
+        The normalised URL, or the input unchanged if it is empty/None.
+    """
+    if not url or not str(url).strip():
+        return url
+
+    raw = str(url).strip().strip('"').strip("'")
+
+    # Without a scheme, urlparse would read "host:443" as scheme "host".
+    if '://' not in raw:
+        raw = 'https://' + raw.lstrip('/')
+
+    parsed = urlparse(raw)
+    scheme = (parsed.scheme or 'https').lower()
+    host = (parsed.hostname or '').lower()
+    if not host:
+        return url
+
+    try:
+        port = parsed.port
+    except ValueError:
+        port = None
+
+    if (scheme == 'https' and port == 443) or (scheme == 'http' and port == 80):
+        port = None
+
+    return f"{scheme}://{host}" + (f":{port}" if port else "")
+
+
+def get_console_url():
+    """
+    Read the console URL from the environment, normalised.
+
+    Use this instead of ``os.environ['CSP_ENDPOINT']`` so a URL supplied via the
+    environment or a .env file gets the same normalisation as one entered during
+    setup (bare host, explicit :443, trailing slash, and so on).
+
+    Returns:
+        The normalised console URL, or None when CSP_ENDPOINT is unset/empty.
+    """
+    import os
+    return normalize_console_url(os.environ.get('CSP_ENDPOINT', '')) or None
+
+
+def validate_console_url(server, token, verbose=False):
+    """
+    Check that a console URL actually serves the Aqua console API.
+
+    Authentication happens against the regional API endpoint, so a wrong
+    console URL still lets sign-in succeed and only breaks later on every data
+    call. The most common mistake is using the tenant *gateway* URL (the
+    ``-gw`` host), which answers gRPC rather than the REST API.
+
+    Args:
+        server: Normalised console URL
+        token: A valid bearer token
+        verbose: Print the probe URL
+
+    Returns:
+        (ok, message) -- ok is True when the URL serves the REST API.
+    """
+    api_url = f"{server}/api/v2/repositories"
+    if verbose:
+        print(f"Validating console URL: GET {api_url}")
+
+    try:
+        res = requests.get(api_url, headers={'Authorization': f'Bearer {token}'},
+                           params={'page': 1, 'pagesize': 1}, verify=False, timeout=20)
+    except requests.exceptions.RequestException as e:
+        return False, f"Could not reach {server} ({type(e).__name__}). Check the console URL."
+
+    content_type = res.headers.get('content-type', '')
+
+    # The tenant gateway speaks gRPC and rejects REST with 415.
+    if 'grpc' in content_type.lower() or res.status_code == 415:
+        hint = ""
+        if '-gw.' in server:
+            hint = f" Try removing '-gw' -> {server.replace('-gw.', '.', 1)}"
+        return False, (f"{server} looks like the tenant gateway (gRPC), not the console "
+                       f"API.{hint}")
+
+    if res.status_code == 200 and 'json' in content_type.lower():
+        return True, "Console URL verified."
+
+    if res.status_code in (401, 403):
+        # Reachable and speaking the right protocol; the token just lacks rights.
+        return True, f"Console URL reachable (HTTP {res.status_code} - limited permissions)."
+
+    return False, (f"{server} did not return the expected API response "
+                   f"(HTTP {res.status_code}, content-type '{content_type or 'unknown'}').")
 
 
 def _request_with_retry(method, url, token, headers=None, verbose=False, **kwargs):

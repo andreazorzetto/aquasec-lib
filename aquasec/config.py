@@ -10,6 +10,9 @@ from pathlib import Path
 import configparser
 from cryptography.fernet import Fernet
 
+from .common import normalize_console_url, validate_console_url
+from .auth import get_console_urls_from_token
+
 # Check if we can use inquirer
 try:
     import inquirer
@@ -222,21 +225,75 @@ def load_profile_credentials(profile_name='default'):
         return False, profile_name
     
     # Set environment variables
+    # Normalise on read too, so profiles saved before normalisation existed
+    # (or hand-edited config files) still resolve to a usable URL.
+    csp_endpoint = normalize_console_url(config.get('csp_endpoint', '')) or ''
+
     if config.get('auth_method') == 'api_keys':
         os.environ['AQUA_KEY'] = creds['api_key']
         os.environ['AQUA_SECRET'] = creds['api_secret']
         os.environ['AQUA_ROLE'] = config['api_role']
         os.environ['AQUA_METHODS'] = config['api_methods']
         os.environ['AQUA_ENDPOINT'] = config['api_endpoint']
-        os.environ['CSP_ENDPOINT'] = config['csp_endpoint']
+        os.environ['CSP_ENDPOINT'] = csp_endpoint
     else:
         os.environ['AQUA_USER'] = creds['username']
         os.environ['AQUA_PASSWORD'] = creds['password']
-        os.environ['CSP_ENDPOINT'] = config['csp_endpoint']
+        os.environ['CSP_ENDPOINT'] = csp_endpoint
         if 'api_endpoint' in config:
             os.environ['AQUA_ENDPOINT'] = config['api_endpoint']
     
     return True, profile_name
+
+
+def authenticate_with(config, creds):
+    """
+    Authenticate using an unsaved config/creds pair and return the token.
+
+    Same mechanics as ``test_connection()`` but hands back the token, so callers
+    can read tenant metadata from it (e.g. the console URL) or probe endpoints.
+
+    Args:
+        config: Config dict (auth_method, api_endpoint, csp_endpoint, ...)
+        creds: Credentials dict
+
+    Returns:
+        The bearer token, or None if authentication failed.
+    """
+    old_env = {}
+    try:
+        if config['auth_method'] == 'api_keys':
+            env_vars = {
+                'AQUA_KEY': creds['api_key'],
+                'AQUA_SECRET': creds['api_secret'],
+                'AQUA_ROLE': config.get('api_role', 'Administrator'),
+                'AQUA_METHODS': config.get('api_methods', 'ANY'),
+                'AQUA_ENDPOINT': config['api_endpoint'],
+                'CSP_ENDPOINT': config.get('csp_endpoint', '') or '',
+            }
+        else:
+            env_vars = {
+                'AQUA_USER': creds['username'],
+                'AQUA_PASSWORD': creds['password'],
+                'CSP_ENDPOINT': config.get('csp_endpoint', '') or '',
+            }
+            if config.get('api_endpoint'):
+                env_vars['AQUA_ENDPOINT'] = config['api_endpoint']
+
+        for key, value in env_vars.items():
+            old_env[key] = os.environ.get(key)
+            os.environ[key] = value
+
+        from .auth import authenticate
+        return authenticate(verbose=False)
+    except Exception:
+        return None
+    finally:
+        for key, value in old_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 def test_connection(config, creds):
@@ -455,10 +512,12 @@ def interactive_setup(profile_name=None, debug=False):
             else:
                 config['api_endpoint'] = input("Enter API endpoint URL: ").strip()
     
-    # CSP endpoint
+    # CSP endpoint. For SaaS this can be read straight off the token, so it is
+    # optional here; anything entered is normalised (scheme/port/path tolerated).
     print("\nEnter your Aqua Console URL")
-    print("Example: https://xyz.cloud.aquasec.com or https://aqua.company.internal")
-    config['csp_endpoint'] = input("Console URL: ").strip()
+    print("Example: xyz.cloud.aquasec.com or https://aqua.company.internal:8443")
+    print("Leave blank to detect it automatically (Aqua SaaS)")
+    config['csp_endpoint'] = normalize_console_url(input("Console URL: ").strip()) or ''
     
     # Collect credentials based on auth method
     if config['auth_method'] == 'api_keys':
@@ -475,11 +534,41 @@ def interactive_setup(profile_name=None, debug=False):
         creds['username'] = input("Username/Email: ").strip()
         creds['password'] = getpass.getpass("Password: ")
     
-    # Test connection
+    # Authenticate, then resolve and verify the console URL. Sign-in happens
+    # against the regional API endpoint, so it succeeds even when the console
+    # URL is wrong -- the profile would look fine and fail on every data call.
     print("\nTesting connection...")
-    if test_connection(config, creds):
-        print("✓ Connection successful!")
-        
+    token = authenticate_with(config, creds)
+
+    if token:
+        print("✓ Authentication successful!")
+
+        detected = get_console_urls_from_token(token)
+
+        if not config['csp_endpoint']:
+            if detected['console']:
+                config['csp_endpoint'] = detected['console']
+                print(f"✓ Console URL detected: {config['csp_endpoint']}")
+            else:
+                print("✗ Could not detect the console URL from the token "
+                      "(expected for on-prem). Please re-run and enter it.")
+                return False
+        elif detected['gateway'] and config['csp_endpoint'] == detected['gateway']:
+            # Entered the gateway host; we already know the right one.
+            print(f"! {config['csp_endpoint']} is the tenant gateway, not the console.")
+            print(f"✓ Using the console URL instead: {detected['console']}")
+            config['csp_endpoint'] = detected['console']
+
+        ok, message = validate_console_url(config['csp_endpoint'], token, verbose=debug)
+        if ok:
+            print(f"✓ {message}")
+        else:
+            print(f"✗ {message}")
+            if detected['console'] and detected['console'] != config['csp_endpoint']:
+                print(f"  Detected console URL for this tenant: {detected['console']}")
+            print("\nConfiguration not saved - fix the console URL and re-run setup.")
+            return False
+
         # Save configuration
         should_save = True
         if HAS_INQUIRER:

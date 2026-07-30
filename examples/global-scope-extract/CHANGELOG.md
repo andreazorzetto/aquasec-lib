@@ -30,6 +30,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   Deep-linkable via `#scope=<name>` / `#unscoped`. Colour encoding validated for
   colour-blind separation.
 - `--repos-only` / `--containers-only` to limit the analysis.
+- Each run writes its reports into a timestamped `output_<timestamp>/` folder, so
+  generated files don't accumulate in the project directory. `--output-dir`
+  overrides the folder; output flags also accept an explicit path, and used bare
+  (`--xlsx --dashboard`) they take default names inside the folder.
 - Unscoped containers are additionally grouped by cluster → namespace, the
   actionable view for platform teams chasing coverage gaps.
 - Profile-based authentication (`setup` / `profile` commands) consistent with the
