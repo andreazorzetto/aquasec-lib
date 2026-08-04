@@ -102,7 +102,8 @@ from .common import (
     generate_csv_for_license_breakdown,
     normalize_console_url,
     validate_console_url,
-    get_console_url
+    get_console_url,
+    resolve_console_url
 )
 
 from .config import (
@@ -207,6 +208,7 @@ __all__ = [
     'normalize_console_url',
     'validate_console_url',
     'get_console_url',
+    'resolve_console_url',
     
     # Configuration management
     'ConfigManager',

@@ -76,6 +76,46 @@ def get_console_url():
     return normalize_console_url(os.environ.get('CSP_ENDPOINT', '')) or None
 
 
+def resolve_console_url(token=None, verbose=False):
+    """
+    Work out the console URL, preferring what the caller configured.
+
+    ``CSP_ENDPOINT`` wins when set, so an operator can always override. When it
+    is not set and a token is supplied, the URL is read from the token's own
+    ``csp_metadata`` — which is where it comes from on SaaS anyway, so callers
+    using user/password auth need not know their tenant ID at all.
+
+    Every caller was otherwise chaining ``get_console_url()`` and
+    ``get_console_urls_from_token()`` by hand, and getting that chain wrong
+    fails at the first data call rather than at sign-in.
+
+    Args:
+        token: A bearer token, used only if CSP_ENDPOINT is unset
+        verbose: Print which source the URL came from
+
+    Returns:
+        The normalised console URL, or None if neither source has one.
+    """
+    url = get_console_url()
+    if url:
+        if verbose:
+            print(f"Console URL from CSP_ENDPOINT: {url}")
+        return url
+
+    if token:
+        from .auth import get_console_urls_from_token
+        try:
+            url = (get_console_urls_from_token(token) or {}).get('console')
+        except Exception:            # a malformed or on-prem token has no metadata
+            url = None
+        if url:
+            if verbose:
+                print(f"Console URL detected from token: {url}")
+            return url
+
+    return None
+
+
 def validate_console_url(server, token, verbose=False):
     """
     Check that a console URL actually serves the Aqua console API.

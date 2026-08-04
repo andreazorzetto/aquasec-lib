@@ -74,8 +74,15 @@ def authenticate(verbose=False):
     csp_endpoint = environ.get('CSP_ENDPOINT')
     api_methods = environ.get('AQUA_METHODS')
 
-    # API Keys SaaS auth
-    if api_key and api_secret and api_endpoint and csp_endpoint and api_role and api_methods:
+    # API Keys SaaS auth.
+    #
+    # CSP_ENDPOINT is deliberately not required here: sign-in happens against
+    # the regional API endpoint, api_auth() never receives the console URL, and
+    # the token carries it in csp_metadata anyway (see resolve_console_url).
+    # Gating on it forced callers to supply a tenant id that was then discarded,
+    # and omitting it produced "missing credentials" — which points at the
+    # wrong problem entirely. On-prem still needs it, and asks for it below.
+    if api_key and api_secret and api_endpoint and api_role and api_methods:
         # get methods list
         methods_list = api_methods.split(',')
         methods_json = json.dumps(methods_list)
@@ -117,8 +124,9 @@ AQUA_ENDPOINT='https://eu-1.api.cloudsploit.com'
 #AQUA_USER=email@address.com
 #AQUA_PASSWORD='password'
 
-# Required for both Auth methods
-CSP_ENDPOINT='https://xxxxxxxxxx.cloud.aquasec.com'
+# SaaS: optional. The console URL is read from the token; set this only to
+# override it. On-prem: required, and AQUA_ENDPOINT must be unset.
+#CSP_ENDPOINT='https://xxxxxxxxxx.cloud.aquasec.com'
 ----------------------------------------
 
 AUTHENTICATION CANCELLED

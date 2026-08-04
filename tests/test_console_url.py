@@ -8,7 +8,8 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from aquasec.common import normalize_console_url, validate_console_url, get_console_url
+from aquasec.common import (normalize_console_url, validate_console_url,
+                            get_console_url, resolve_console_url)
 from aquasec.auth import decode_token_claims, get_console_urls_from_token
 
 
@@ -148,3 +149,96 @@ class TestValidateConsoleUrl:
         mock_get.return_value = _resp(200, "text/html")
         ok, _ = validate_console_url("https://wrong.example.com", "tok")
         assert ok is False
+
+
+class TestResolveConsoleUrl:
+    """
+    CSP_ENDPOINT when set, the token's own metadata otherwise.
+
+    Callers were chaining get_console_url() and get_console_urls_from_token()
+    by hand, and getting that chain wrong fails at the first data call rather
+    than at sign-in — so the failure surfaces a long way from its cause.
+    """
+
+    def test_env_wins_when_set(self):
+        tok = _token({"csp_metadata": {"urls": {"ese_url": "from-token.cloud.aquasec.com"}}})
+        with patch.dict(os.environ, {"CSP_ENDPOINT": "https://from-env.cloud.aquasec.com"}):
+            assert resolve_console_url(tok) == "https://from-env.cloud.aquasec.com"
+
+    def test_env_is_normalised_like_any_other_input(self):
+        with patch.dict(os.environ, {"CSP_ENDPOINT": "TENANT.cloud.aquasec.com:443/"}):
+            assert resolve_console_url() == "https://tenant.cloud.aquasec.com"
+
+    def test_token_used_when_env_unset(self):
+        tok = _token({"csp_metadata": {"urls": {"ese_url": "from-token.cloud.aquasec.com"}}})
+        with patch.dict(os.environ, {}, clear=True):
+            assert resolve_console_url(tok) == "https://from-token.cloud.aquasec.com"
+
+    def test_none_when_neither_source_has_one(self):
+        with patch.dict(os.environ, {}, clear=True):
+            assert resolve_console_url() is None
+
+    def test_token_without_metadata_yields_none(self):
+        """An on-prem token carries no csp_metadata; that is not an error."""
+        with patch.dict(os.environ, {}, clear=True):
+            assert resolve_console_url(_token({"account_id": 1})) is None
+
+    def test_malformed_token_does_not_raise(self):
+        """Callers pass whatever sign-in returned; a bad token must not explode."""
+        with patch.dict(os.environ, {}, clear=True):
+            assert resolve_console_url("not-a-jwt") is None
+            assert resolve_console_url("") is None
+
+    def test_empty_env_falls_through_to_the_token(self):
+        """CSP_ENDPOINT='' is unset, not an instruction to use the empty string."""
+        tok = _token({"csp_metadata": {"urls": {"ese_url": "from-token.cloud.aquasec.com"}}})
+        with patch.dict(os.environ, {"CSP_ENDPOINT": ""}):
+            assert resolve_console_url(tok) == "https://from-token.cloud.aquasec.com"
+
+
+class TestAuthenticateGating:
+    """
+    API-key auth must not require CSP_ENDPOINT.
+
+    Sign-in goes to the regional API endpoint, api_auth() never receives the
+    console URL, and the token carries it. Gating on it made a complete set of
+    API-key credentials report "missing credentials", which points at the wrong
+    problem entirely.
+    """
+
+    KEYS = {"AQUA_KEY": "k", "AQUA_SECRET": "s", "AQUA_ROLE": "r",
+            "AQUA_METHODS": "ANY", "AQUA_ENDPOINT": "https://eu-1.api.cloudsploit.com"}
+
+    def test_api_keys_without_csp_endpoint_authenticate(self):
+        from aquasec import auth as auth_mod
+        with patch.dict(os.environ, self.KEYS, clear=True), \
+             patch.object(auth_mod, "api_auth", return_value="tok") as m:
+            assert auth_mod.authenticate() == "tok"
+        assert m.called, "API-key branch was not taken without CSP_ENDPOINT"
+
+    def test_on_prem_still_requires_csp_endpoint(self):
+        """The on-prem branch is unchanged: console URL, and no API endpoint."""
+        from aquasec import auth as auth_mod
+        env = {"AQUA_USER": "u", "AQUA_PASSWORD": "p",
+               "CSP_ENDPOINT": "https://onprem.example.com"}
+        with patch.dict(os.environ, env, clear=True), \
+             patch.object(auth_mod, "user_pass_onprem_auth", return_value="tok") as m:
+            assert auth_mod.authenticate() == "tok"
+        assert m.called, "on-prem branch no longer reachable"
+
+    def test_incomplete_api_keys_still_rejected(self):
+        """
+        Relaxing one requirement must not relax the rest.
+
+        Incomplete credentials exit rather than returning — authenticate() is
+        the entry point of CLI tools and treats this as fatal, which is why the
+        old CSP_ENDPOINT gate was so costly: a complete set of API keys took
+        this branch and the process died telling you they were missing.
+        """
+        import pytest
+        from aquasec import auth as auth_mod
+        partial = dict(self.KEYS)
+        partial.pop("AQUA_ROLE")
+        with patch.dict(os.environ, partial, clear=True):
+            with pytest.raises(SystemExit):
+                auth_mod.authenticate()
