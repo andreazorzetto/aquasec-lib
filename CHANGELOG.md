@@ -5,6 +5,52 @@ All notable changes to the aquasec library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-08-07
+
+### Added
+- **NEW**: `vulnerabilities.py` module for vulnerability findings (`/api/v2/risks/vulnerabilities`)
+  - `api_get_vulnerabilities()`: Raw call with scope/image/registry/digest/severity/cluster/namespace/workload/acknowledged filters, all passed as request params so they are URL-encoded correctly. `skip_count` defaults to `true` — the total count is a separate aggregate over the whole filtered set, and a paginating caller does not need it on every request
+  - `get_vulnerability_count()`: One-off count for sizing a job
+  - `image_ref()`: Builds the most selective filter available for an image object (digest preferred, registry + exact name as fallback), tolerating the differing field names returned by the inventory, repository and host-image endpoints
+  - `get_image_vulnerabilities()`: All findings for a single image, with retry and backoff on retryable server errors
+  - `iter_all_vulnerabilities()`: Per-image extraction across the estate, parallelised, yielding `(image, findings)` so callers can stream to disk
+  - `get_all_vulnerabilities()`: List-returning convenience wrapper
+  - `vulnerability_to_row()` / `write_vulnerabilities_csv()`: Flatten findings to CSV using the console export's own column order, appendable so a long run never holds the estate in memory
+  - `finding_key()`: Identity of a finding — `scan_resource_id` + CVE where available, falling back to (CVE, registry, image UID, image, digest, package, version, path). A row from the endpoint is one *occurrence*, not a unique CVE
+  - `unique_cves()` / `write_unique_cves_csv()`: Roll findings up to distinct CVEs, with occurrence and affected-image counts
+  - `summarise_by_image()` / `write_image_summary_csv()`: Per-image breakdown — findings, distinct CVEs and severity split per image
+- **NEW**: Server-side vulnerability export in `vulnerabilities.py` — the **documented** REST path, and the one the UI's own dialog points you to above 5M records
+  - `export_vulnerabilities()`: Trigger + stream end to end, returning the ZIP. `POST /api/v2/risks/vulnerabilities/exporters/{entity_type}/export` -> token, then `POST .../stream` -> `application/zip` (blocking, server-side)
+  - `api_trigger_export()`, `api_get_export_job()`, `api_stream_export()`: The individual steps, plus `.../jobs/{token}` for status
+  - `get_available_columns()`: `GET /api/v2/risks/vulnerabilities/{entity_type}/columns/available` — **118 selectable columns** across 16 groups, including `epss_score`, `scan_resource_id`, `num_running_workloads`, `cluster`, `resource.purl`, `cisa_due_date`, `is_remote_exploit`
+  - `read_export_archive()`: Reads `aqua_export.csv` + `manifest.json` out of the archive
+  - Accepts the same server-side filters as the query API: `severities`, `has_workloads`, `cluster`, `namespace_names`, `registry_name`, `exploit_availability`, `exploit_type`, `network_attack`
+  - `extract_export_csv()`: Stream the archive's CSV to disk — a 32 MB / 2.1M-row archive costs ~6.8 GB of RSS if parsed into dicts, ~70 MB streamed
+- **NEW**: `exports.py` module for the CNAPP scheduled-export service (`https://{region}.edge.cloud.aquasec.com/cnapp/export`) — a **different service from the tenant console**, which is why no `/api/v2/...` route serves it. Authenticates with the same bearer token.
+  - `resolve_region()` / `get_export_base_url()`: Derive the regional host from `AQUA_REGION`, else the token's `cspm_url` claim, else `AQUA_ENDPOINT` (`eu-1` -> `eu-central-1`, `asia-1` -> `ap-southeast-1`, `ap-2` -> `ap-southeast-2`, unprefixed -> `us-east-1`)
+  - `create_export()` / `api_create_export()`: `POST /api/v1/exports` -> `export_id`, with named errors for 404 (integration missing), 409 (name taken) and 429 (at the active-export limit)
+  - `get_export_capacity()`: Reads the active/limit pair, so a create can be refused with an explanation instead of a bare 429. The limit is low — 5 on the tenant verified against, which was already at 5/5
+  - `get_exports()`, `get_export_entities()`, `get_integrations(only_working=True)`, `api_delete_exports()`, `api_set_export_active()`
+- **NEW**: Test suite for the exports module (`tests/test_exports.py`)
+- `get_all_inventory_images()`: General-purpose Hub inventory paginator with scope / `has_workloads` / registry / date filters. `get_all_stale_images()` is now a thin wrapper over it
+- **NEW**: `vuln-extract` example utility — per-image vulnerability export with CSV/JSONL output, plus an `estimate` command that reports the tenant's real counts and puts deep pagination and the per-image walk side by side
+- **NEW**: Test suite for the vulnerabilities module (`tests/test_vulnerabilities.py`)
+
+### Why
+- Walking `/api/v2/risks/vulnerabilities` page by page does not scale. Offset pagination makes the database produce and discard every row before the requested page, so reading page *p* costs roughly *p* pages of work and a full walk of *N* pages costs on the order of *N²/2*. At 400+ pages that is tens of millions of rows generated to return a few hundred thousand — a two-order-of-magnitude amplification. The run slows as it proceeds, total runtime grows quadratically with the data, and long reads on a replica eventually fail with `canceling statement due to conflict with recovery (SQLSTATE 40001)` at a page that is expensive to resume from.
+- Every finding belongs to an image and the endpoint accepts an image filter, so enumerating images first and running one shallow, selective query per image makes the work linear, parallel, and cheap to retry. Filtering enumeration to `has_workloads=True` narrows it further, server-side.
+
+### Note
+- **The console's Export button and the documented REST export are different endpoints.** The UI calls `/api/v2/hub/findings/vulnerabilities/images/exporters/export` and assembles the file client-side — hence its own warning about session timeout and browser IndexedDB, and the 5M-record recommendation. The documented REST path is `/api/v2/risks/vulnerabilities/exporters/{entity_type}/export` + `/stream`, where the server builds the archive. Verified live end to end: filtered export returned a 25,899-byte ZIP containing 1,691 per-CVE rows in ~1s.
+- Two required fields are easy to miss and both fail with HTTP **500**, not 4xx: `name` must match an **existing** exporter ("Compressed CSV"), not a free-text label; and one of `columns_name` / `columns` is mandatory.
+- **The scheduled export is a push to your own destination, not a download**, and two questions about it are unresolved. `entities-data` advertises `vms`/`images`/`containers`/`code_repositories`/`functions`/`kubernetes_resources` but **not** `vulnerabilities` — yet exports of that type exist, so the discovery endpoint does not describe everything the service accepts. And the columns advertised for `images` are asset-level summaries ("Count of vulnerabilities by severity"), not one row per CVE. If `vulnerabilities` behaves the same way, this service is not a substitute for the per-finding extract. Neither could be settled: creating an export needs a free slot and a working destination integration, and the verification tenant was at 5/5 with every integration failing.
+- **The two approaches return the same rows.** A vulnerability row is one (image, package, CVE) occurrence, not a unique CVE, so a full walk of the endpoint was always an image-level breakdown with the same CVE repeated across images. The per-image walk queries the same endpoint with an image filter, so the union over all images is the unfiltered set. **Verified live**: on a real tenant both approaches returned an identical 3,263-row set (0 rows unique to either) and the same 307 distinct CVEs — a 10.6× repetition factor. The only way they diverge is enumeration coverage, so `extract` reconciles against the endpoint's own count and reports any shortfall.
+- **A row's real identity is `scan_resource_id` (+ `image_uid`), not the image/package/path triple.** The same CVE on the same package at the same path is legitimately reported more than once per image. On a live 2,111,019-row extract, keying without them showed 44,591 (2.1%) false duplicates; adding `image_uid` cut that to 6,412 (0.3%) and `scan_resource_id` to zero. Both are now CSV columns and part of `finding_key()`, so `--dedupe` cannot destroy genuine rows.
+- CSV columns were confirmed against a live tenant. The console-export columns are retained unchanged for drop-in compatibility (several are legitimately empty — CVSS v2 is largely superseded, `v_patch_status` requires `include_vpatch_info`, custom severities are tenant-specific). Twenty fields the API returns but the console CSV omits are appended, notably **EPSS score/percentile** (~98% coverage), **running-workload counts and cluster** (100%), package **PURL/CPE**, CVSS v4, and `vulnerability_id`.
+- Duplicate images are dropped before the fan-out, so an image reachable through two enumeration paths cannot inflate the result set. `--dedupe` additionally de-duplicates at finding level, at a memory cost proportional to the result set.
+- **Images sharing a digest are distinct.** Identical content is routinely registered under several names — on a live tenant 3,369 inventory entries covered only 2,041 distinct digests, one of them shared by six images each reporting its own 92 findings — and the endpoint reports each entry separately. Both the enumeration de-duplication and `finding_key()` therefore key on the full identity (registry + name + digest), never the digest alone; keying on digest dropped ~15% of that tenant's findings. Relatedly, a `digest=` filter on its own matches every image sharing it, so each query is pinned with registry + exact name + digest together.
+- Pagination in both new paginators deliberately continues until an **empty** page rather than stopping at the first short one: some filters are applied after pagination, so a short page does not reliably mean the last page, and stopping early would silently truncate results.
+
 ## [0.10.0] - 2026-07-30
 
 ### Added

@@ -5,7 +5,7 @@ This library provides a clean API interface for interacting with Aqua Security's
 platform, extracted from the andreactl tool.
 """
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 
 from .auth import (
     authenticate,
@@ -73,10 +73,60 @@ from .inventory import (
     api_get_inventory_images,
     api_get_inventory_images_count,
     api_delete_images,
+    get_all_inventory_images,
     get_all_stale_images,
     get_stale_images_count,
     filter_images_by_registry,
     filter_images_by_repository
+)
+
+from .vulnerabilities import (
+    api_get_vulnerabilities,
+    get_vulnerability_count,
+    image_ref,
+    get_image_vulnerabilities,
+    iter_all_vulnerabilities,
+    get_all_vulnerabilities,
+    finding_key,
+    unique_cves,
+    summarise_by_image,
+    vulnerability_to_row,
+    write_vulnerabilities_csv,
+    write_image_summary_csv,
+    write_unique_cves_csv,
+    api_get_available_columns,
+    get_available_columns,
+    api_trigger_export,
+    api_list_exporters,
+    get_exporter_names,
+    api_get_export_job,
+    api_stream_export,
+    export_vulnerabilities,
+    read_export_archive,
+    extract_export_csv,
+    EXPORT_ENTITY_TYPES,
+    CSV_COLUMNS,
+    IMAGE_SUMMARY_COLUMNS,
+    UNIQUE_CVE_COLUMNS
+)
+
+from .exports import (
+    resolve_region,
+    get_export_base_url,
+    api_list_exports,
+    api_get_export,
+    api_create_export,
+    api_delete_exports,
+    api_set_export_active,
+    api_get_export_metadata,
+    api_get_export_entities,
+    api_list_integrations,
+    get_exports,
+    get_export_capacity,
+    get_export_entities,
+    get_integrations,
+    create_export,
+    PREFIX_TO_REGION
 )
 
 from .host_images import (
@@ -102,7 +152,8 @@ from .common import (
     generate_csv_for_license_breakdown,
     normalize_console_url,
     validate_console_url,
-    get_console_url
+    get_console_url,
+    resolve_console_url
 )
 
 from .config import (
@@ -180,10 +231,58 @@ __all__ = [
     'api_get_inventory_images',
     'api_get_inventory_images_count',
     'api_delete_images',
+    'get_all_inventory_images',
     'get_all_stale_images',
     'get_stale_images_count',
     'filter_images_by_registry',
     'filter_images_by_repository',
+
+    # Vulnerabilities (per-image extraction)
+    'api_get_vulnerabilities',
+    'get_vulnerability_count',
+    'image_ref',
+    'get_image_vulnerabilities',
+    'iter_all_vulnerabilities',
+    'get_all_vulnerabilities',
+    'finding_key',
+    'unique_cves',
+    'summarise_by_image',
+    'vulnerability_to_row',
+    'write_vulnerabilities_csv',
+    'write_image_summary_csv',
+    'write_unique_cves_csv',
+    'api_get_available_columns',
+    'get_available_columns',
+    'api_trigger_export',
+    'api_list_exporters',
+    'get_exporter_names',
+    'api_get_export_job',
+    'api_stream_export',
+    'export_vulnerabilities',
+    'read_export_archive',
+    'extract_export_csv',
+    'EXPORT_ENTITY_TYPES',
+    'CSV_COLUMNS',
+    'IMAGE_SUMMARY_COLUMNS',
+    'UNIQUE_CVE_COLUMNS',
+
+    # Scheduled exports (CNAPP export service, push to a destination)
+    'resolve_region',
+    'get_export_base_url',
+    'api_list_exports',
+    'api_get_export',
+    'api_create_export',
+    'api_delete_exports',
+    'api_set_export_active',
+    'api_get_export_metadata',
+    'api_get_export_entities',
+    'api_list_integrations',
+    'get_exports',
+    'get_export_capacity',
+    'get_export_entities',
+    'get_integrations',
+    'create_export',
+    'PREFIX_TO_REGION',
 
     # Host images (images discovered on hosts/VMs by enforcers)
     'api_get_host_images',
@@ -207,6 +306,7 @@ __all__ = [
     'normalize_console_url',
     'validate_console_url',
     'get_console_url',
+    'resolve_console_url',
     
     # Configuration management
     'ConfigManager',

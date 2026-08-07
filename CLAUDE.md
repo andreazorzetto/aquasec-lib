@@ -63,6 +63,7 @@ cd examples/image-cleanup-utility && python aqua_image_cleanup.py --help
 - **inventory.py**: Hub inventory images API (added in v0.6.0)
 - **host_images.py**: Images discovered on hosts/VMs by enforcers, per-scope repo counts (added in v0.8.0)
 - **containers.py**: Running-container inventory API with scope filtering (added in v0.9.0)
+- **vulnerabilities.py**: Vulnerability findings via **per-image** extraction, not deep pagination (added in v0.11.0)
 - **scopes.py**: Application scope functions
 - **common.py**: Utility functions and `_request_with_retry` (auto re-auth on 401)
 
@@ -86,7 +87,7 @@ cd examples/image-cleanup-utility && python aqua_image_cleanup.py --help
 
 ## Production Examples
 
-The `examples/` directory contains six production-ready utilities demonstrating library usage:
+The `examples/` directory contains seven production-ready utilities demonstrating library usage:
 
 1. **license-utility/**: License utilization analysis and reporting
 2. **repo-breakdown/**: Repository scope analysis and orphan detection
@@ -94,6 +95,7 @@ The `examples/` directory contains six production-ready utilities demonstrating 
 4. **repo-delete-utility/**: Bulk repository deletion with safety features
 5. **image-cleanup-utility/**: Stale image cleanup from Hub inventory
 6. **global-scope-extract/**: Repositories and containers only in the Global scope (unscoped-coverage gaps)
+7. **vuln-extract/**: Vulnerability export by image (linear cost) instead of paging the vulnerabilities endpoint (quadratic cost)
 
 Each example includes:
 - Comprehensive CLI interface with argparse
@@ -138,7 +140,7 @@ Secure, profile-based credential storage with:
 
 ## Version Information
 
-Current version: 0.10.0 (see setup.py and aquasec/__init__.py)
+Current version: 0.11.0 (see setup.py and aquasec/__init__.py)
 
 Major versions:
 - v0.4.0: Added serverless functions support, enforcer optimizations
@@ -148,3 +150,4 @@ Major versions:
 - v0.8.0: Added host images module (per-scope repository counts for licensing)
 - v0.9.0: Added running-containers module and the global-scope-extract utility (unscoped repositories/containers)
 - v0.10.0: Console URL normalisation, auto-detection from the auth token, and validation during setup
+- v0.11.0: Added vulnerabilities module and the vuln-extract utility (per-image extraction; avoids the quadratic cost of deep offset pagination)

@@ -154,27 +154,36 @@ def get_stale_images_count(server, token, days=90, scope=None, registry_name=Non
         return 0
 
 
-def get_all_stale_images(server, token, days=90, scope=None, registry_name=None, verbose=False):
+def get_all_inventory_images(server, token, scope=None, first_found_date=None,
+                             has_workloads=None, registry_name=None, page_size=200,
+                             verbose=False):
     """
-    Get all stale images (registered more than X days ago without workloads).
+    Get all Hub inventory images matching the given filters, paginating until done.
 
-    Loops through all pages until empty page returned.
+    The general-purpose paginator over the inventory endpoint. Every filter is
+    applied server-side, so ``has_workloads=True`` narrows the list to images that
+    have at least one running workload *before* any data crosses the wire -- which
+    is what makes it a usable enumeration source for a per-image vulnerability
+    extract (see :mod:`aquasec.vulnerabilities`).
 
     Args:
         server: The server URL
         token: Authentication token
-        days: Number of days threshold (default 90)
-        scope: Optional scope filter
+        scope: Optional application scope filter
+        first_found_date: Date filter string (e.g. "over|90|days")
+        has_workloads: Filter by workload status (True/False/None)
         registry_name: Optional registry name filter
+        page_size: Number of results per page (default 200)
         verbose: Print debug information
 
     Returns:
-        List of all matching images
+        List of all matching image objects
+
+    Raises:
+        Exception: If any page returns a non-200 status code
     """
     all_images = []
     page = 1
-    page_size = 200
-    first_found_date = f"over|{days}|days"
 
     while True:
         res = api_get_inventory_images(
@@ -183,7 +192,7 @@ def get_all_stale_images(server, token, days=90, scope=None, registry_name=None,
             page_size=page_size,
             scope=scope,
             first_found_date=first_found_date,
-            has_workloads=False,
+            has_workloads=has_workloads,
             registry_name=registry_name,
             verbose=verbose
         )
@@ -198,12 +207,42 @@ def get_all_stale_images(server, token, days=90, scope=None, registry_name=None,
             break
 
         all_images.extend(images)
+
+        # Deliberately loop until an empty page rather than stopping on the first
+        # short one: some filters are applied after pagination, so a short page
+        # does not reliably mean the last page. One extra request per enumeration
+        # is a cheap price for not silently truncating the image list.
         page += 1
 
         if verbose:
             print(f"Fetched {len(all_images)} images so far...")
 
     return all_images
+
+
+def get_all_stale_images(server, token, days=90, scope=None, registry_name=None, verbose=False):
+    """
+    Get all stale images (registered more than X days ago without workloads).
+
+    Args:
+        server: The server URL
+        token: Authentication token
+        days: Number of days threshold (default 90)
+        scope: Optional scope filter
+        registry_name: Optional registry name filter
+        verbose: Print debug information
+
+    Returns:
+        List of all matching images
+    """
+    return get_all_inventory_images(
+        server, token,
+        scope=scope,
+        first_found_date=f"over|{days}|days",
+        has_workloads=False,
+        registry_name=registry_name,
+        verbose=verbose
+    )
 
 
 def filter_images_by_registry(images, registry):
