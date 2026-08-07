@@ -31,6 +31,7 @@ jobs:
       repo-delete-utility-changed: ${{ steps.changes.outputs.repo-delete-utility }}
       image-cleanup-utility-changed: ${{ steps.changes.outputs.image-cleanup-utility }}
       global-scope-extract-changed: ${{ steps.changes.outputs.global-scope-extract }}
+      vuln-extract-changed: ${{ steps.changes.outputs.vuln-extract }}
       dependencies-changed: ${{ steps.changes.outputs.dependencies }}
     steps:
     - uses: actions/checkout@v4
@@ -50,6 +51,8 @@ jobs:
             - 'examples/image-cleanup-utility/**'
           global-scope-extract:
             - 'examples/global-scope-extract/**'
+          vuln-extract:
+            - 'examples/vuln-extract/**'
           dependencies:
             - '**/requirements*.txt'
             - 'setup.py'
@@ -304,6 +307,42 @@ jobs:
       with:
         sarif_file: 'trivy-global-scope-extract.sarif'
         category: 'global-scope-extract'
+
+  security-scan-vuln-extract:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.vuln-extract-changed == 'true'
+    runs-on: ubuntu-latest
+    name: Security Scan - Vuln Extract
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner on vuln extract
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: 'examples/vuln-extract/'
+        format: 'table'
+        exit-code: '1'
+        severity: 'CRITICAL,HIGH'
+        ignore-unfixed: true
+
+    - name: Run Trivy vulnerability scanner for SARIF (Vuln Extract)
+      uses: aquasecurity/trivy-action@master
+      if: always()
+      with:
+        scan-type: 'fs'
+        scan-ref: 'examples/vuln-extract/'
+        format: 'sarif'
+        output: 'trivy-vuln-extract.sarif'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+        ignore-unfixed: true
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-vuln-extract.sarif'
+        category: 'vuln-extract'
 
   dependency-check:
     needs: detect-changes
