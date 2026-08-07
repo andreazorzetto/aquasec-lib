@@ -29,6 +29,7 @@ jobs:
       repo-delete-utility-changed: ${{ steps.changes.outputs.repo-delete-utility }}
       image-cleanup-utility-changed: ${{ steps.changes.outputs.image-cleanup-utility }}
       global-scope-extract-changed: ${{ steps.changes.outputs.global-scope-extract }}
+      vuln-extract-changed: ${{ steps.changes.outputs.vuln-extract }}
     steps:
     - uses: actions/checkout@v4
     - uses: dorny/paths-filter@v2
@@ -52,6 +53,9 @@ jobs:
             - 'aquasec/**'
           global-scope-extract:
             - 'examples/global-scope-extract/**'
+            - 'aquasec/**'
+          vuln-extract:
+            - 'examples/vuln-extract/**'
             - 'aquasec/**'
 
   test-library:
@@ -307,3 +311,40 @@ jobs:
       run: |
         cd examples/global-scope-extract
         python aqua_global_scope_extract.py --help
+
+  test-vuln-extract:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.vuln-extract-changed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install library in development mode
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+
+    - name: Install example dependencies
+      run: |
+        cd examples/vuln-extract
+        pip install -r requirements.txt
+        pip install -r requirements-test.txt
+
+    - name: Run vulnerability extract tests
+      run: |
+        cd examples/vuln-extract
+        python -m pytest tests/ -v --tb=short
+
+    - name: Test vulnerability extract CLI
+      run: |
+        cd examples/vuln-extract
+        python aqua_vuln_extract.py --help
