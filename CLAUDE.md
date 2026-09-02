@@ -57,7 +57,7 @@ cd examples/image-cleanup-utility && python aqua_image_cleanup.py --help
 - **licenses.py**: License API calls and utilization analysis 
 - **repositories.py**: Container image repository management
 - **code_repositories.py**: Source code repository functions
-- **enforcers.py**: Enforcer group and count management (optimized in v0.4.0)
+- **enforcers.py**: Enforcer group and count management (optimized in v0.4.0), plus capability reporting for licensed features (added in v0.12.0)
 - **functions.py**: Serverless functions API calls (added in v0.4.0)
 - **vms.py**: VM inventory management with filtering (added in v0.5.0)
 - **inventory.py**: Hub inventory images API (added in v0.6.0)
@@ -140,7 +140,7 @@ Secure, profile-based credential storage with:
 
 ## Version Information
 
-Current version: 0.11.0 (see setup.py and aquasec/__init__.py)
+Current version: 0.12.0 (see setup.py and aquasec/__init__.py)
 
 Major versions:
 - v0.4.0: Added serverless functions support, enforcer optimizations
@@ -151,3 +151,4 @@ Major versions:
 - v0.9.0: Added running-containers module and the global-scope-extract utility (unscoped repositories/containers)
 - v0.10.0: Console URL normalisation, auto-detection from the auth token, and validation during setup
 - v0.11.0: Added vulnerabilities module and the vuln-extract utility (per-image extraction; avoids the quadratic cost of deep offset pagination)
+- v0.12.0: Added enforcer group capability reporting and the `license capabilities` command (AMP only; enforcer types that cannot act on a capability are excluded from totals)

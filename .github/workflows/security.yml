@@ -34,8 +34,8 @@ jobs:
       vuln-extract-changed: ${{ steps.changes.outputs.vuln-extract }}
       dependencies-changed: ${{ steps.changes.outputs.dependencies }}
     steps:
-    - uses: actions/checkout@v4
-    - uses: dorny/paths-filter@v2
+    - uses: actions/checkout@v5
+    - uses: dorny/paths-filter@v3
       id: changes
       with:
         filters: |
@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Security Scan - Library
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Run Trivy vulnerability scanner on library
       uses: aquasecurity/trivy-action@master
@@ -86,7 +86,7 @@ jobs:
         ignore-unfixed: true
 
     - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always()
       with:
         sarif_file: 'trivy-library.sarif'
@@ -98,7 +98,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Security Scan - License Utility
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Run Trivy vulnerability scanner on license utility
       uses: aquasecurity/trivy-action@master
@@ -122,7 +122,7 @@ jobs:
         ignore-unfixed: true
 
     - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always()
       with:
         sarif_file: 'trivy-license-utility.sarif'
@@ -134,7 +134,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Security Scan - Repo Breakdown
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Run Trivy vulnerability scanner on repo breakdown
       uses: aquasecurity/trivy-action@master
@@ -158,7 +158,7 @@ jobs:
         ignore-unfixed: true
 
     - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always()
       with:
         sarif_file: 'trivy-repo-breakdown.sarif'
@@ -170,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Security Scan - VM Extract
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Run Trivy vulnerability scanner on vm extract
       uses: aquasecurity/trivy-action@master
@@ -194,7 +194,7 @@ jobs:
         ignore-unfixed: true
 
     - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always()
       with:
         sarif_file: 'trivy-vm-extract.sarif'
@@ -206,7 +206,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Security Scan - Repo Delete Utility
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Run Trivy vulnerability scanner on repo delete utility
       uses: aquasecurity/trivy-action@master
@@ -230,7 +230,7 @@ jobs:
         ignore-unfixed: true
 
     - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always()
       with:
         sarif_file: 'trivy-repo-delete-utility.sarif'
@@ -242,7 +242,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Security Scan - Image Cleanup Utility
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Run Trivy vulnerability scanner on image cleanup utility
       uses: aquasecurity/trivy-action@master
@@ -266,7 +266,7 @@ jobs:
         ignore-unfixed: true
 
     - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always()
       with:
         sarif_file: 'trivy-image-cleanup-utility.sarif'
@@ -278,7 +278,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Security Scan - Global Scope Extract
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Run Trivy vulnerability scanner on global scope extract
       uses: aquasecurity/trivy-action@master
@@ -302,7 +302,7 @@ jobs:
         ignore-unfixed: true
 
     - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always()
       with:
         sarif_file: 'trivy-global-scope-extract.sarif'
@@ -314,7 +314,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Security Scan - Vuln Extract
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Run Trivy vulnerability scanner on vuln extract
       uses: aquasecurity/trivy-action@master
@@ -338,7 +338,7 @@ jobs:
         ignore-unfixed: true
 
     - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always()
       with:
         sarif_file: 'trivy-vuln-extract.sarif'
@@ -349,10 +349,10 @@ jobs:
     runs-on: ubuntu-latest
     name: Dependency Vulnerability Check
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v6
       with:
         python-version: '3.9'
 
@@ -383,7 +383,7 @@ jobs:
       run: safety check -r examples/image-cleanup-utility/requirements.txt --json --output safety-image-cleanup-utility.json || true
 
     - name: Upload safety results
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       if: always()
       with:
         name: safety-reports
