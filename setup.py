@@ -9,7 +9,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name='aquasec',
-    version='0.11.0',
+    version='0.12.0',
     author='Andrea Zorzetto',
     description='API client library for Aqua Security platform',
     long_description=long_description,
@@ -24,11 +24,11 @@ setup(
         "Intended Audience :: Developers",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
-    python_requires='>=3.7',
+    python_requires='>=3.8',
     install_requires=[
-        'requests>=2.28.0',
-        'prettytable>=3.5.0',
-        'cryptography>=41.0.0',
-        'inquirer>=3.1.0',
+        'requests>=2.32.0',
+        'prettytable>=3.11.0',
+        'cryptography>=43.0.1',
+        'inquirer>=3.1.4',
     ],
 )

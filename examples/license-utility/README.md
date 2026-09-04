@@ -8,6 +8,7 @@ A command-line tool for extracting and analyzing license utilization data from A
 - **NEW**: Show actual utilization vs license limits with percentage calculations
 - **NEW**: Support for serverless functions counting and tracking
 - **NEW**: Per-scope **host image** breakdown (`license host-images`) — counts images discovered on hosts/VMs by enforcers, by repository, per application scope
+- **NEW**: Licensed **feature usage** by enforcer type (`license capabilities`) — how many enforcers actually run a separately licensed capability, such as Advanced Malware Protection
 - Generate license breakdown by application scope (now including a host images column)
 - Export data to CSV and JSON files  
 - Secure credential storage with profile management
@@ -75,6 +76,19 @@ python aqua_license_util.py license host-images --list-repos
 
 # Export host image breakdown
 python aqua_license_util.py license host-images --csv-file host_images.csv
+
+# Licensed feature usage by enforcer type (NEW in v0.12.0)
+python aqua_license_util.py license capabilities         # JSON
+python aqua_license_util.py license capabilities -v      # table
+
+# Include the enforcer groups that have it enabled, largest first
+python aqua_license_util.py license capabilities -v --by-group
+
+# Narrow to one control rather than the union
+python aqua_license_util.py license capabilities --capability antivirus_protection
+
+# Export
+python aqua_license_util.py license capabilities --csv-file amp.csv --json-file amp.json
 ```
 
 ### Host Images by Scope
@@ -100,6 +114,60 @@ $ python aqua_license_util.py license host-images -v
 
 By default the `Global` scope is excluded (it would return everything); add
 `--include-global` to include it.
+
+### Licensed Feature Usage
+
+`license capabilities` answers "if we drop this from the contract, what stops
+working?" It reads the capability/settings block that the enforcer groups endpoint
+already returns, so it costs **one paged sweep** (~15s for ~1,000 groups) rather than
+the per-scope fan-out that `license breakdown` performs.
+
+```bash
+$ python aqua_license_util.py license capabilities -v
++---------------+-------+---------+-------+-------------+----------------+
+| Enforcer Type |  With | Without | Total | Groups With | Groups Without |
++---------------+-------+---------+-------+-------------+----------------+
+| agent         |   442 |       0 |   442 |         160 |             76 |
+| host_enforcer | 2,905 |   1,641 | 4,546 |         236 |            103 |
+| TOTAL         | 3,347 |   1,641 | 4,988 |         396 |            179 |
++---------------+-------+---------+-------+-------------+----------------+
+
+3,347 of 4,988 connected enforcers (67.1%) are running Advanced Malware Protection.
+Excluded: 1,768 connected enforcers cannot run this capability - kube_enforcer (44), micro_enforcer (1,724).
+```
+
+Counts are point-in-time. Micro Enforcers in particular are ephemeral, and connected
+totals move by a few enforcers between runs on a live tenant, so quote the figure with
+the date it was taken.
+
+Two things this command gets right that a naive read of the API does not:
+
+**AMP is two flags, not one.** `antivirus_protection` enables Real-time Malware
+Protection in *host* runtime policies and `container_antivirus_protection` does the
+same for *container* runtime policies. Both draw on the same licence, so the default
+`--capability amp` counts a group if **either** is set. Use the individual capability
+names to see one control on its own.
+
+**Enforcer type decides whether a flag means anything.** KubeEnforcers and
+MicroEnforcers store the AMP flags but cannot act on them — a KubeEnforcer is an
+admission controller, a MicroEnforcer is an injected sidecar. Their groups are
+excluded from the totals and reported separately, so the utilisation percentage is
+of the estate that *could* use the feature, not the whole estate. Counting them
+inflated a real tenant's figure by 261 enforcers.
+
+Only AMP is currently reportable. The other group settings (`behavioral_engine`,
+`network_protection`, the forensics collectors) are rejected rather than guessed at,
+because the enforcer types they apply to have not been verified and a wrong total is
+worse than an error.
+
+Exports use an explicit field allowlist: raw enforcer group objects embed the
+enforcer registration token, both in `token` and inside `install_command`.
+
+`--by-group` with `--csv-file amp.csv` also writes `amp-groups.csv` with the per-group
+detail, since that is a different row shape from the per-type summary. As with the
+other export commands, `--json-file` **appends** if the file already exists, giving one
+JSON object per line — convenient for accumulating daily snapshots, but use a fresh
+path if you want a single parseable object.
 
 ## Output Modes
 

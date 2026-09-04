@@ -14,10 +14,10 @@ pip install aquasec
 
 ### Dependencies
 
-- requests>=2.28.0
-- prettytable>=3.5.0
-- cryptography>=41.0.0
-- inquirer>=3.1.0
+- requests>=2.32.0
+- prettytable>=3.11.0
+- cryptography>=43.0.1
+- inquirer>=3.1.4
 
 ## Features
 
@@ -61,7 +61,7 @@ aquasec/
 ├── config.py           # Configuration management
 ├── licenses.py         # License-related API calls
 ├── scopes.py          # Application scope functions
-├── enforcers.py       # Enforcer-related functions (optimized in v0.4.0)
+├── enforcers.py       # Enforcer counts + capability reporting (v0.12.0)
 ├── repositories.py    # Repository API calls
 ├── code_repositories.py # Code repository API calls
 ├── functions.py       # Serverless functions API calls (NEW in v0.4.0)
@@ -161,6 +161,30 @@ scopes = get_app_scopes(server, token)
 # Get repository count by scope (with optional verbose parameter for debug output)
 repo_counts = get_repo_count_by_scope(server, token, [s['name'] for s in scopes], verbose=True)
 ```
+
+### Enforcer Capabilities (licensed feature usage)
+
+```python
+from aquasec import get_capability_rollup, get_enforcer_groups_with_capability
+
+# How many enforcers actually run Advanced Malware Protection?
+rollup = get_capability_rollup(server, token, "amp")
+print(rollup["totals"]["connected_enabled"], "of",
+      rollup["totals"]["connected_enabled"] + rollup["totals"]["connected_disabled"],
+      f"({rollup['utilization_pct']}%)")
+
+# Which groups have it on, and which cannot run it at all
+enabled = get_enforcer_groups_with_capability(server, token, "amp", enabled=True)
+print(rollup["excluded_types"])   # {'kube_enforcer': {...}, 'micro_enforcer': {...}}
+```
+
+`"amp"` is the union of `antivirus_protection` (host runtime policies) and
+`container_antivirus_protection` (container runtime policies) — both draw on the same
+licence. Enforcer types that cannot act on a capability are excluded from the totals
+and reported under `excluded_types`, so `utilization_pct` is a share of the capable
+estate. Unverified capabilities raise `ValueError` rather than returning a wrong
+count. Use `redact_enforcer_group()` before exporting group objects: they embed the
+enforcer registration token.
 
 ### VM Inventory
 

@@ -5,7 +5,7 @@ This library provides a clean API interface for interacting with Aqua Security's
 platform, extracted from the andreactl tool.
 """
 
-__version__ = "0.11.0"
+__version__ = "0.12.0"
 
 from .auth import (
     authenticate,
@@ -35,7 +35,18 @@ from .enforcers import (
     api_get_enforcer_groups,
     get_enforcers_from_group,
     get_enforcer_groups,
-    get_enforcer_count
+    get_enforcer_count,
+    get_all_enforcer_groups,
+    resolve_capability,
+    group_supports_capability,
+    group_has_capability,
+    redact_enforcer_group,
+    get_enforcer_groups_with_capability,
+    get_capability_rollup,
+    CAPABILITIES,
+    AMP_CAPABLE_TYPES,
+    SENSITIVE_GROUP_FIELDS,
+    GROUP_EXPORT_FIELDS
 )
 
 from .repositories import (
@@ -199,6 +210,19 @@ __all__ = [
     'get_enforcers_from_group',
     'get_enforcer_groups',
     'get_enforcer_count',
+
+    # Enforcer group capabilities (licence feature usage)
+    'get_all_enforcer_groups',
+    'resolve_capability',
+    'group_supports_capability',
+    'group_has_capability',
+    'redact_enforcer_group',
+    'get_enforcer_groups_with_capability',
+    'get_capability_rollup',
+    'CAPABILITIES',
+    'AMP_CAPABLE_TYPES',
+    'SENSITIVE_GROUP_FIELDS',
+    'GROUP_EXPORT_FIELDS',
     
     # Repositories
     'api_get_repositories',

@@ -8,6 +8,7 @@ Usage:
     python aqua_license_util.py license show           # Show license limits (JSON)
     python aqua_license_util.py license count          # Show utilization vs limits (JSON)  
     python aqua_license_util.py license breakdown      # Show per-scope breakdown (JSON)
+    python aqua_license_util.py license capabilities   # Show feature usage by enforcer type (JSON)
 """
 
 import argparse
@@ -27,6 +28,12 @@ from aquasec import (
     get_code_repo_count_by_scope,
     get_host_image_repo_count_by_scope,
     get_all_host_images,
+    get_all_enforcer_groups,
+    get_capability_rollup,
+    get_enforcer_groups_with_capability,
+    resolve_capability,
+    CAPABILITIES,
+    GROUP_EXPORT_FIELDS,
     extract_repo_base,
     get_function_count,
     api_get_dta_license,
@@ -556,6 +563,142 @@ def license_host_images(server, token, verbose=False, debug=False, csv_file=None
         print(json.dumps(breakdown_data, indent=2))
 
 
+def license_capabilities(server, token, verbose=False, debug=False, capability="amp",
+                         csv_file=None, json_file=None, by_group=False):
+    """Report how many enforcers actually run a licensed capability.
+
+    Answers "if we drop this from the contract, what stops working?" using a
+    single paged sweep of the enforcer groups endpoint, rather than the per-scope
+    fan-out that `license breakdown` performs.
+
+    Enforcer types that cannot act on the capability (KubeEnforcers and
+    MicroEnforcers, for AMP) are reported separately and excluded from the
+    totals: they store the flags but never act on them, so counting them
+    overstates usage.
+    """
+    spec = resolve_capability(capability)
+
+    if verbose:
+        print(f"Capability: {spec['label']}")
+        print(f"Applies to enforcer types: {', '.join(sorted(spec['types']))}")
+        print("Fetching enforcer groups...")
+
+    groups = get_all_enforcer_groups(server, token, verbose=debug)
+    if verbose:
+        print(f"Retrieved {len(groups)} enforcer groups")
+
+    rollup = get_capability_rollup(server, token, capability, groups=groups, verbose=debug)
+
+    enabled_groups = get_enforcer_groups_with_capability(
+        server, token, capability, enabled=True, groups=groups)
+
+    if by_group:
+        # Explicit field allowlist: raw group objects embed the enforcer
+        # registration token, directly and inside install_command.
+        rollup["groups"] = [
+            {field: g.get(field) for field in GROUP_EXPORT_FIELDS}
+            for g in sorted(enabled_groups,
+                            key=lambda g: g.get("connected_count") or 0,
+                            reverse=True)
+        ]
+
+    totals = rollup["totals"]
+    capable_total = totals["connected_enabled"] + totals["connected_disabled"]
+
+    # write csv - silent unless verbose
+    if csv_file:
+        import csv as _csv
+        with open(csv_file, mode='w', newline='') as f:
+            writer = _csv.writer(f)
+            writer.writerow(['enforcer_type', 'with_capability', 'without_capability',
+                             'total_connected', 'groups_with', 'groups_without'])
+            for group_type, counts in sorted(rollup["by_type"].items()):
+                writer.writerow([
+                    group_type,
+                    counts['connected_enabled'],
+                    counts['connected_disabled'],
+                    counts['connected_enabled'] + counts['connected_disabled'],
+                    counts['groups_enabled'],
+                    counts['groups_disabled'],
+                ])
+            writer.writerow(['TOTAL', totals['connected_enabled'],
+                             totals['connected_disabled'], capable_total,
+                             totals['groups_enabled'], totals['groups_disabled']])
+        if verbose:
+            print(f"Capability breakdown exported to CSV: {csv_file}")
+
+        # The summary CSV is one row per enforcer type; per-group detail is a
+        # different shape, so it goes to a companion file rather than being
+        # appended as ragged rows.
+        if by_group:
+            stem, ext = os.path.splitext(csv_file)
+            groups_csv = f"{stem}-groups{ext or '.csv'}"
+            with open(groups_csv, mode='w', newline='') as f:
+                writer = _csv.DictWriter(f, fieldnames=list(GROUP_EXPORT_FIELDS))
+                writer.writeheader()
+                writer.writerows(rollup["groups"])
+            if verbose:
+                print(f"Enforcer groups exported to CSV: {groups_csv}")
+
+    # write json - silent unless verbose
+    if json_file:
+        write_json_to_file(json_file, rollup)
+        if verbose:
+            print(f"Capability breakdown exported to JSON: {json_file}")
+
+    if verbose:
+        table = PrettyTable()
+        table.field_names = ["Enforcer Type", "With", "Without", "Total", "Groups With", "Groups Without"]
+        table.align["Enforcer Type"] = "l"
+        for column in ["With", "Without", "Total", "Groups With", "Groups Without"]:
+            table.align[column] = "r"
+        for group_type, counts in sorted(rollup["by_type"].items()):
+            table.add_row([
+                group_type,
+                f"{counts['connected_enabled']:,}",
+                f"{counts['connected_disabled']:,}",
+                f"{counts['connected_enabled'] + counts['connected_disabled']:,}",
+                f"{counts['groups_enabled']:,}",
+                f"{counts['groups_disabled']:,}",
+            ])
+        table.add_row(["TOTAL",
+                       f"{totals['connected_enabled']:,}",
+                       f"{totals['connected_disabled']:,}",
+                       f"{capable_total:,}",
+                       f"{totals['groups_enabled']:,}",
+                       f"{totals['groups_disabled']:,}"])
+        print()
+        print(table)
+
+        if rollup["utilization_pct"] is not None:
+            print(f"\n{totals['connected_enabled']:,} of {capable_total:,} connected enforcers "
+                  f"({rollup['utilization_pct']}%) are running {spec['label']}.")
+
+        if rollup["excluded_types"]:
+            excluded_total = sum(v["connected"] for v in rollup["excluded_types"].values())
+            detail = ", ".join(f"{t} ({v['connected']:,})"
+                               for t, v in sorted(rollup["excluded_types"].items()))
+            print(f"Excluded: {excluded_total:,} connected enforcers cannot run this "
+                  f"capability - {detail}.")
+
+        if by_group:
+            print(f"\nTop enforcer groups with {spec['label']} enabled:")
+            group_table = PrettyTable()
+            group_table.field_names = ["Group", "Type", "Connected"]
+            group_table.align["Group"] = "l"
+            group_table.align["Type"] = "l"
+            group_table.align["Connected"] = "r"
+            for entry in rollup["groups"][:20]:
+                group_table.add_row([
+                    entry.get("logicalname") or entry.get("id") or "(unnamed)",
+                    entry.get("type"),
+                    f"{entry.get('connected_count') or 0:,}",
+                ])
+            print(group_table)
+    else:
+        print(json.dumps(rollup, indent=2))
+
+
 def main():
     """Main function"""
     # Disable SSL warnings
@@ -686,6 +829,19 @@ def main():
     license_host_images_parser.add_argument('--list-repos', dest='list_repos', action='store_true',
                                 help='Include the list of unique repository names per scope in JSON output')
 
+    # License capabilities (licensed feature usage by enforcer type)
+    license_capabilities_parser = license_subparsers.add_parser('capabilities',
+                                help='Show licensed feature usage by enforcer type (JSON by default, use -v for table)')
+    license_capabilities_parser.add_argument('--capability', dest='capability', action='store',
+                                default='amp', choices=sorted(CAPABILITIES),
+                                help="Capability to report on (default: amp, i.e. either AMP control)")
+    license_capabilities_parser.add_argument('--csv-file', dest='csv_file', action='store',
+                                help='Export to CSV file')
+    license_capabilities_parser.add_argument('--json-file', dest='json_file', action='store',
+                                help='Export to JSON file')
+    license_capabilities_parser.add_argument('--by-group', dest='by_group', action='store_true',
+                                help='Include the enforcer groups that have the capability enabled')
+
     # Parse the filtered arguments
     args = parser.parse_args(filtered_args)
     
@@ -788,6 +944,7 @@ def main():
             print("  license count             Show utilization vs limits")
             print("  license breakdown         Show license breakdown by scope")
             print("  license host-images       Show host image repo counts by scope")
+            print("  license capabilities      Show licensed feature usage by enforcer type")
             print("\nExample: python aqua_license_util.py license show")
             sys.exit(1)
     
@@ -901,6 +1058,13 @@ def main():
             license_host_images(csp_endpoint, token, args.verbose, args.debug,
                             args.csv_file, args.json_file, args.include_global,
                             args.list_repos)
+        elif args.command == 'license' and args.license_command == 'capabilities':
+            if args.debug:
+                print(f"DEBUG: Using CSP endpoint for license API: {csp_endpoint}")
+
+            license_capabilities(csp_endpoint, token, args.verbose, args.debug,
+                            args.capability, args.csv_file, args.json_file,
+                            args.by_group)
     except KeyboardInterrupt:
         if args.verbose:
             print('\nExecution interrupted by user')

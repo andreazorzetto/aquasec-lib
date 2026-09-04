@@ -5,6 +5,33 @@ All notable changes to the aquasec library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-09-02
+
+### Added
+- **NEW**: Enforcer group capability reporting in `enforcers.py` — answers "how many enforcers actually run a licensed feature?" from the settings block that `/api/v1/hostsbatch` already returns on every group
+  - `get_capability_rollup()`: Per-enforcer-type summary of a capability — groups and connected/disconnected/registered enforcer counts, with and without, plus tenant utilisation
+  - `get_enforcer_groups_with_capability()`: The groups where a capability is (or is not) in effect
+  - `group_has_capability()` / `group_supports_capability()`: Per-group predicates
+  - `get_all_enforcer_groups()`: List-returning wrapper over the existing paginator
+  - `redact_enforcer_group()` + `SENSITIVE_GROUP_FIELDS` / `GROUP_EXPORT_FIELDS`: Group objects embed the enforcer registration token, directly in `token` and inside `install_command` / `command`. Exports use an explicit allowlist so a breakdown can be shared
+  - `CAPABILITIES` / `AMP_CAPABLE_TYPES` / `resolve_capability()`: The supported capability set
+  - `get_all_enforcer_groups()` raises on a non-200 rather than calling `sys.exit()` as the older `get_enforcer_groups()` does, so a caller emitting JSON can report the failure in its own format
+- **NEW**: `license capabilities` command on the license utility — `--capability`, `--by-group`, `--csv-file`, `--json-file`, table under `-v` and JSON otherwise. `--by-group` with `--csv-file` also writes a companion `<name>-groups.csv`, the per-group detail being a different row shape from the per-type summary
+- **NEW**: Test suites for capability reporting (`tests/test_enforcer_capabilities.py`, `examples/license-utility/tests/test_capabilities.py`)
+
+### Why
+- Advanced Malware Protection is a separately licensed line item, and a renewal question ("what stops working if we drop it?") had no answer short of opening each enforcer group in the console. The flags were already in every `/api/v1/hostsbatch` response; the library read only `connected_count` from it and discarded the rest.
+- **AMP is two flags, not one.** `antivirus_protection` enables Real-time Malware Protection in host runtime policies, `container_antivirus_protection` does the same for container runtime policies, and *both* are gated on the same licence — so usage is the union of the two. Reporting either one alone undercounts.
+- **Enforcer type gates the flags.** KubeEnforcers (admission controllers) and MicroEnforcers (injected sidecars) store the AMP flags in their group settings but cannot act on them: on a live tenant the flags sat True on exactly the same groups as `host_protection`, which is meaningless for a component with no host. Counting those groups overstated AMP usage by 261 enforcers on the tenant this was built against (3,606 against a correct 3,345 at that moment; connected counts drift by a few between runs). `get_capability_rollup()` excludes types that cannot act on a capability and reports them separately under `excluded_types`, so utilisation is a percentage of the *capable* estate rather than the whole one.
+- Only AMP is reportable. The applicable-type matrix for the other ~15 group settings (`behavioral_engine`, `*_forensics_collection`, `network_protection`, ...) has not been verified, and `resolve_capability()` raises on anything unverified rather than producing a plausible-looking wrong total.
+- Cost is one paged sweep of `/api/v1/hostsbatch` — ~15s for 1,058 groups, against ~10 minutes for the per-scope `license breakdown` path (4 calls x N scopes).
+
+### Changed
+- Dependency floors refreshed: `requests>=2.32.0`, `prettytable>=3.11.0`, `cryptography>=43.0.1`, `inquirer>=3.1.4`, `openpyxl>=3.1.5`, `pytest>=8.3.5`, `pytest-cov>=5.0.0`. Floors are the newest that still resolve on Python 3.8, which remains the CI matrix floor
+- `python_requires` corrected from `>=3.7` to `>=3.8` — 3.7 was never in the CI matrix and cannot install the pinned dependencies
+- GitHub Actions refreshed: `checkout@v5`, `setup-python@v6`, `upload-artifact@v5`, `codecov-action@v5`, `paths-filter@v3`, `codeql-action/upload-sarif@v4`
+- Library CI now runs with `--cov=aquasec --cov-report=xml`, matching the command documented in CLAUDE.md. The coverage upload had never received a file, and `codecov-action`'s `file` input is renamed to `files` from v4 onward
+
 ## [0.11.0] - 2026-08-07
 
 ### Added
