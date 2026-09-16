@@ -5,7 +5,7 @@ A command-line tool for extracting and analyzing license utilization data from A
 ## Features
 
 - Extract license information in JSON or table format
-- **NEW**: Show actual utilization vs license limits with percentage calculations
+- **NEW**: Show actual usage against license limits, with Advanced Malware Protection usage in the same table
 - **NEW**: Support for serverless functions counting and tracking
 - **NEW**: Per-scope **host image** breakdown (`license host-images`) — counts images discovered on hosts/VMs by enforcers, by repository, per application scope
 - **NEW**: Licensed **feature usage** by enforcer type (`license capabilities`) — how many enforcers actually run a separately licensed capability, such as Advanced Malware Protection
@@ -51,11 +51,14 @@ python aqua_license_util.py license show
 # Show license information in table format
 python aqua_license_util.py license show -v
 
-# Show actual utilization vs license limits (NEW in v0.4.0)
+# Show actual usage against license limits, including AMP (NEW in v0.4.0)
 python aqua_license_util.py license count
 
-# Show utilization vs limits in table format
+# Table format
 python aqua_license_util.py license count -v
+
+# Skip the AMP sweep if you only need the licence counts (~3x faster)
+python aqua_license_util.py license count -v --no-amp
 
 # Generate license breakdown by scope (JSON output)
 # Now includes a "Host Images" column (unique host image repos per scope)
@@ -114,6 +117,47 @@ $ python aqua_license_util.py license host-images -v
 
 By default the `Global` scope is excluded (it would return everything); add
 `--include-global` to include it.
+
+### Licence Usage and AMP
+
+`license count` shows what is used against what is licensed, with Advanced Malware
+Protection folded into the same table since it applies to Aqua (node) and VM
+enforcers only:
+
+```bash
+$ python aqua_license_util.py license count -v
++--------------------+-----------+--------+----------+
+| Resource           |     Limit |   Used | With AMP |
++--------------------+-----------+--------+----------+
+| Image Repositories |     5,900 |  3,344 |        - |
+| Code Repositories  | Unlimited |    562 |        - |
+| Aqua Enforcers     |     1,180 |    519 |      519 |
+| Kube Enforcers     | Unlimited |     41 |      n/a |
+| Micro Enforcers    |     1,180 |  1,427 |      n/a |
+| VM Enforcers       |    11,900 |  4,592 |    2,939 |
+| Functions          |    12,900 | 16,528 |        - |
++--------------------+-----------+--------+----------+
+
+Advanced Malware Protection: 3,458 of 5,110 capable enforcers (67.7%).
+```
+
+`n/a` means the enforcer type **cannot** run AMP, which is different from running
+none — Kube and Micro Enforcers never contribute either way. `-` means the row is
+not an enforcer.
+
+**No utilisation percentage is shown.** Which limit a row should be divided by is a
+licensing question rather than a data one: "Aqua Enforcers" is paired with
+`num_protected_kube_nodes`, while the same licence separately carries
+`num_enforcers` (unlimited on the tenants checked). A percentage printed against
+the wrong denominator reads as authoritative when it is not, so limit and used are
+both shown and the ratio is left to be taken deliberately.
+
+AMP itself is a boolean feature entitlement in the licence (`malware_protection`),
+not a seat count, so its figure is **coverage** of the capable estate, not
+consumption of an allowance.
+
+Adding AMP costs one extra sweep of the enforcer groups endpoint (~16s on a
+1,000-group tenant); `--no-amp` skips it.
 
 ### Licensed Feature Usage
 
@@ -249,7 +293,7 @@ python aqua_license_util.py -p production license show
 ### License Commands
 
 - `license show` - Display license totals (JSON by default, use -v for table)
-- `license count` - Show actual utilization vs license limits
+- `license count` - Show actual usage against license limits, including AMP
 - `license breakdown` - Show license usage per application scope (images, host images, code repos, enforcers)
 - `license host-images` - Show host image repository counts per application scope
 
