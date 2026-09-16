@@ -267,7 +267,7 @@ def authenticate_with(config, creds):
                 'AQUA_KEY': creds['api_key'],
                 'AQUA_SECRET': creds['api_secret'],
                 'AQUA_ROLE': config.get('api_role', 'Administrator'),
-                'AQUA_METHODS': config.get('api_methods', 'ANY'),
+                'AQUA_METHODS': config.get('api_methods', 'ANY:*'),
                 'AQUA_ENDPOINT': config['api_endpoint'],
                 # authenticate() insists on a non-empty CSP_ENDPOINT for this path
                 # even though signing in never uses it (only AQUA_* is signed).
@@ -536,7 +536,7 @@ def interactive_setup(profile_name=None, debug=False):
         # API role and methods
         print("\nAPI Configuration")
         config['api_role'] = input("API Role (default: Administrator): ").strip() or 'Administrator'
-        config['api_methods'] = input("API Methods (default: ANY): ").strip() or 'ANY'
+        config['api_methods'] = input("API Methods (default: ANY:*): ").strip() or 'ANY:*'
     else:
         print("\nEnter user credentials")
         creds['username'] = input("Username/Email: ").strip()

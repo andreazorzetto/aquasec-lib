@@ -140,7 +140,7 @@ Secure, profile-based credential storage with:
 
 ## Version Information
 
-Current version: 0.12.0 (see setup.py and aquasec/__init__.py)
+Current version: 0.12.1 (see setup.py and aquasec/__init__.py)
 
 Major versions:
 - v0.4.0: Added serverless functions support, enforcer optimizations
@@ -152,3 +152,4 @@ Major versions:
 - v0.10.0: Console URL normalisation, auto-detection from the auth token, and validation during setup
 - v0.11.0: Added vulnerabilities module and the vuln-extract utility (per-image extraction; avoids the quadratic cost of deep offset pagination)
 - v0.12.0: Added enforcer group capability reporting and the `license capabilities` command (AMP only; enforcer types that cannot act on a capability are excluded from totals)
+- v0.12.1: `AQUA_METHODS` defaults to `ANY:*` (a bare `ANY` is denied by the Supply Chain API); license-utility 0.6.0 folds Advanced Malware Protection into `license count` and drops the utilisation percentage

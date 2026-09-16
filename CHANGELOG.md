@@ -5,6 +5,16 @@ All notable changes to the aquasec library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2026-09-16
+
+### Changed
+- **BREAKING-ish default**: `AQUA_METHODS` now defaults to `ANY:*` instead of `ANY`, in the interactive setup wizard, the profile runtime fallback and every documented example. `allowed_endpoints` entries are `METHOD:path` pairs; a bare `ANY` carries no path part, which the console API tolerates but the Supply Chain API (`api.<region>.supply-chain.cloud.aquasec.com`, used by `code_repositories.py`) rejects with `403 "User is not authorized to access this resource with an explicit deny in an identity-based policy"`. Confirmed live: same key and role, `["ANY"]` → 403 and `["ANY:*"]` → 200 on `/v2/build/repositories`, while `/api/v2/repositories` returns 200 either way. Existing saved profiles keep whatever they stored — re-run setup or edit the profile to pick up the new value. Aqua's own API documentation has since been updated to state `ANY:*` as the requirement
+- **license utility 0.6.0**: `license count` now reports Advanced Malware Protection in the same table as the licence counts, as a `With AMP` column against the Aqua and VM enforcer rows. `n/a` marks the enforcer types that cannot run AMP (Kube, Micro), which is distinct from running none; `-` marks rows that are not enforcers. `--no-amp` skips the extra enforcer-group sweep (~16s on a 1,000-group tenant). JSON output gains an `advanced_malware_protection` block
+- **license utility 0.6.0**: `license count` no longer prints a `Utilization %` column. Which limit a row should be divided by is a licensing question, not a data one — "Aqua Enforcers" was being divided by `num_protected_kube_nodes` while the same licence separately carries `num_enforcers` (unlimited on the tenants checked), producing an authoritative-looking percentage against the wrong denominator. Limit and used are both still shown
+
+### Note
+- The `num_protected_kube_nodes` / `num_enforcers` mapping for the "Aqua Enforcers" row is unchanged and still open; only the derived percentage was removed
+
 ## [0.12.0] - 2026-09-02
 
 ### Added

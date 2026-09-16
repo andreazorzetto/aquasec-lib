@@ -87,7 +87,7 @@ config = {
     'api_endpoint': 'https://api.cloudsploit.com',
     'csp_endpoint': 'https://xyz.cloud.aquasec.com',
     'api_role': 'Administrator',
-    'api_methods': 'ANY'
+    'api_methods': 'ANY:*'
 }
 creds = {
     'api_key': 'your-key',

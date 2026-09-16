@@ -6,7 +6,7 @@ A focused tool for extracting license utilization from Aqua Security platform
 Usage:
     python aqua_license_util.py setup                  # Interactive setup
     python aqua_license_util.py license show           # Show license limits (JSON)
-    python aqua_license_util.py license count          # Show utilization vs limits (JSON)  
+    python aqua_license_util.py license count          # Show usage vs limits + AMP (JSON)
     python aqua_license_util.py license breakdown      # Show per-scope breakdown (JSON)
     python aqua_license_util.py license capabilities   # Show feature usage by enforcer type (JSON)
 """
@@ -32,6 +32,7 @@ from aquasec import (
     get_capability_rollup,
     get_enforcer_groups_with_capability,
     resolve_capability,
+    AMP_CAPABLE_TYPES,
     CAPABILITIES,
     GROUP_EXPORT_FIELDS,
     extract_repo_base,
@@ -54,7 +55,7 @@ from aquasec import (
 )
 
 # Version
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 
 def license_show(server, token, verbose=False, debug=False):
@@ -124,8 +125,21 @@ def license_show(server, token, verbose=False, debug=False):
         print(json.dumps(totals, indent=2))
 
 
-def license_count(server, token, verbose=False, debug=False):
-    """Show actual license utilization totals across all scopes"""
+def license_count(server, token, verbose=False, debug=False, include_amp=True):
+    """Show actual license usage against limits, across all scopes.
+
+    Utilisation percentages are deliberately not shown. The limit a given row is
+    divided by is a licensing question (for example "Aqua Enforcers" is paired with
+    `num_protected_kube_nodes`, while the licence also carries a separate
+    `num_enforcers`), and a percentage printed against the wrong denominator reads
+    as authoritative when it is not. Limit and used are both shown, so the ratio
+    can be taken deliberately rather than implied here.
+
+    Advanced Malware Protection usage is folded into the same table: it applies to
+    Aqua (node) and VM enforcers only, so it belongs beside their counts rather
+    than in a separate view. Pass include_amp=False to skip the extra sweep of the
+    enforcer groups endpoint.
+    """
     # Get license limits
     licenses = get_licences(server, token, debug)
     if not licenses:
@@ -199,6 +213,20 @@ def license_count(server, token, verbose=False, debug=False):
             'pod_enforcer': 0
         }
     
+    # Get AMP usage per enforcer type. Costs one paged sweep of the enforcer groups
+    # endpoint, so it is skippable for callers that only want the licence counts.
+    amp_by_type = {}
+    amp_rollup = None
+    if include_amp:
+        try:
+            amp_rollup = get_capability_rollup(server, token, "amp", verbose=debug)
+            amp_by_type = amp_rollup["by_type"]
+            if debug:
+                print(f"DEBUG: AMP rollup: {amp_rollup['totals']}")
+        except Exception as e:
+            if debug:
+                print(f"DEBUG: AMP capability counting not available: {e}")
+
     # Calculate utilization - include all resources even if unlimited
     utilization = {
         'limits': licenses,
@@ -216,49 +244,77 @@ def license_count(server, token, verbose=False, debug=False):
             'protected_kube_nodes': total_enforcers['kube_enforcer']  # K8s nodes protected by kube enforcers
         }
     }
+
+    if amp_rollup is not None:
+        utilization['advanced_malware_protection'] = {
+            'enforcers': amp_rollup["totals"]["connected_enabled"],
+            'capable_enforcers': (amp_rollup["totals"]["connected_enabled"]
+                                  + amp_rollup["totals"]["connected_disabled"]),
+            'coverage_pct': amp_rollup["utilization_pct"],
+            'by_type': {t: c["connected_enabled"] for t, c in amp_by_type.items()},
+            'not_capable': {t: v["connected"] for t, v in amp_rollup["excluded_types"].items()},
+        }
     
     if verbose:
         # Show table with limits vs actual usage
-        table = PrettyTable(["Resource", "Limit", "Used", "Utilization %"])
+        columns = ["Resource", "Limit", "Used"]
+        if include_amp:
+            columns.append("With AMP")
+        table = PrettyTable(columns)
         table.align["Resource"] = "l"
-        table.align["Limit"] = "r"
-        table.align["Used"] = "r"
-        table.align["Utilization %"] = "r"
+        for column in columns[1:]:
+            table.align[column] = "r"
         
         # Define resource mappings - show all resources for renewal/usage tracking
+        # Trailing element is the enforcer group `type` the row counts, used to
+        # attach AMP numbers. None means the row is not an enforcer at all.
         resources = [
-            ('repositories', 'num_repositories', 'Image Repositories'),
-            ('code_repositories', 'num_code_repositories', 'Code Repositories'),
-            ('enforcers', 'num_protected_kube_nodes', 'Aqua Enforcers'),
-            ('kube_enforcers', None, 'Kube Enforcers'),
-            ('micro_enforcers', 'num_microenforcers', 'Micro Enforcers'),
-            ('vm_enforcers', 'num_vm_enforcers', 'VM Enforcers'),
-            ('functions', 'num_functions', 'Functions')
+            ('repositories', 'num_repositories', 'Image Repositories', None),
+            ('code_repositories', 'num_code_repositories', 'Code Repositories', None),
+            ('enforcers', 'num_protected_kube_nodes', 'Aqua Enforcers', 'agent'),
+            ('kube_enforcers', None, 'Kube Enforcers', 'kube_enforcer'),
+            ('micro_enforcers', 'num_microenforcers', 'Micro Enforcers', 'micro_enforcer'),
+            ('vm_enforcers', 'num_vm_enforcers', 'VM Enforcers', 'host_enforcer'),
+            ('functions', 'num_functions', 'Functions', None)
         ]
         
-        for usage_key, limit_key, display_name in resources:
+        for usage_key, limit_key, display_name, enforcer_type in resources:
             # Handle None license key as unlimited
             if limit_key is None:
                 limit = -1
             else:
                 limit = licenses.get(limit_key, 0)
             used = utilization['usage'].get(usage_key, 0)
-            
-            # Format limit
-            if limit == -1:
-                limit_str = "Unlimited"
-                util_pct = "-"
-            else:
-                limit_str = f"{limit:,}"
-                if limit > 0:
-                    util_pct = f"{(used / limit * 100):.1f}%"
+
+            limit_str = "Unlimited" if limit == -1 else f"{limit:,}"
+
+            row = [display_name, limit_str, f"{used:,}"]
+
+            if include_amp:
+                if enforcer_type is None:
+                    amp_str = "-"                          # not an enforcer
+                elif enforcer_type not in AMP_CAPABLE_TYPES:
+                    amp_str = "n/a"                        # cannot run AMP
                 else:
-                    util_pct = "-"
-            
-            table.add_row([display_name, limit_str, f"{used:,}", util_pct])
+                    amp_str = f"{amp_by_type.get(enforcer_type, {}).get('connected_enabled', 0):,}"
+                row.append(amp_str)
+
+            table.add_row(row)
         
         print(table)
         
+        if include_amp and amp_rollup is not None:
+            totals = amp_rollup["totals"]
+            capable = totals["connected_enabled"] + totals["connected_disabled"]
+            print(f"\nAdvanced Malware Protection: {totals['connected_enabled']:,} of {capable:,} "
+                  f"capable enforcers ({amp_rollup['utilization_pct']}%).")
+            if amp_rollup["excluded_types"]:
+                detail = ", ".join(f"{t} ({v['connected']:,})"
+                                   for t, v in sorted(amp_rollup["excluded_types"].items())
+                                   if v["connected"])
+                print(f"  'n/a' rows cannot run AMP: {detail}. AMP is a feature "
+                      f"entitlement (malware_protection), not a seat count.")
+
         # Show total active licenses
         print(f"\nActive Licenses: {licenses.get('num_active', 0)}")
         
@@ -784,7 +840,9 @@ def main():
     license_show_parser = license_subparsers.add_parser('show', help='Show license information (JSON by default, use -v for table)')
     
     # License count
-    license_count_parser = license_subparsers.add_parser('count', help='Show actual license utilization vs limits (JSON by default, use -v for table)')
+    license_count_parser = license_subparsers.add_parser('count', help='Show actual license usage vs limits, including AMP (JSON by default, use -v for table)')
+    license_count_parser.add_argument('--no-amp', dest='no_amp', action='store_true',
+                                help='Skip Advanced Malware Protection counting (faster; avoids a sweep of the enforcer groups endpoint)')
     
     # License breakdown
     license_breakdown_parser = license_subparsers.add_parser('breakdown', help='Show license breakdown by application scope (JSON by default, use -v for table)')
@@ -941,7 +999,7 @@ def main():
             print("Error: No license subcommand specified")
             print("\nAvailable license commands:")
             print("  license show              Show license information")
-            print("  license count             Show utilization vs limits")
+            print("  license count             Show usage vs limits, including AMP")
             print("  license breakdown         Show license breakdown by scope")
             print("  license host-images       Show host image repo counts by scope")
             print("  license capabilities      Show licensed feature usage by enforcer type")
@@ -1022,7 +1080,8 @@ def main():
             if args.debug:
                 print(f"DEBUG: Using CSP endpoint for license API: {csp_endpoint}")
             
-            license_count(csp_endpoint, token, args.verbose, args.debug)
+            license_count(csp_endpoint, token, args.verbose, args.debug,
+                          include_amp=not args.no_amp)
         elif args.command == 'license' and args.license_command == 'breakdown':
             if args.debug:
                 print(f"DEBUG: Using CSP endpoint for license API: {csp_endpoint}")
