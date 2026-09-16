@@ -117,7 +117,10 @@ Example creds file:
 AQUA_KEY=xxxxxxxxxxxxxxxxxx
 AQUA_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxx
 AQUA_ROLE=api_admin_role
-AQUA_METHODS=ANY
+# Method:path pairs the token is allowed to call. 'ANY:*' is any method on any
+# path; a bare 'ANY' has no path part and the Supply Chain API denies every
+# request made with it ("explicit deny in an identity-based policy").
+AQUA_METHODS='ANY:*'
 AQUA_ENDPOINT='https://eu-1.api.cloudsploit.com'
 
 # Required for User/Pass Auth

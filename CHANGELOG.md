@@ -5,6 +5,11 @@ All notable changes to the aquasec library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **BREAKING-ish default**: `AQUA_METHODS` now defaults to `ANY:*` instead of `ANY`, in the interactive setup wizard, the profile runtime fallback and every documented example. `allowed_endpoints` entries are `METHOD:path` pairs; a bare `ANY` carries no path part, which the console API tolerates but the Supply Chain API (`api.<region>.supply-chain.cloud.aquasec.com`, used by `code_repositories.py`) rejects with `403 "User is not authorized to access this resource with an explicit deny in an identity-based policy"`. Confirmed live: same key and role, `["ANY"]` → 403 and `["ANY:*"]` → 200 on `/v2/build/repositories`, while `/api/v2/repositories` returns 200 either way. Existing saved profiles keep whatever they stored — re-run setup or edit the profile to pick up the new value. Aqua's own API documentation has since been updated to state `ANY:*` as the requirement
+
 ## [0.12.0] - 2026-09-02
 
 ### Added

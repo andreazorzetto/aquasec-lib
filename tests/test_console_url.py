@@ -207,7 +207,7 @@ class TestAuthenticateGating:
     """
 
     KEYS = {"AQUA_KEY": "k", "AQUA_SECRET": "s", "AQUA_ROLE": "r",
-            "AQUA_METHODS": "ANY", "AQUA_ENDPOINT": "https://eu-1.api.cloudsploit.com"}
+            "AQUA_METHODS": "ANY:*", "AQUA_ENDPOINT": "https://eu-1.api.cloudsploit.com"}
 
     def test_api_keys_without_csp_endpoint_authenticate(self):
         from aquasec import auth as auth_mod

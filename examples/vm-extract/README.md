@@ -262,7 +262,7 @@ Alternatively, set these environment variables:
 export AQUA_KEY="your-api-key"
 export AQUA_SECRET="your-api-secret"  
 export AQUA_ROLE="api_admin_role"
-export AQUA_METHODS="ANY"
+export AQUA_METHODS="ANY:*"
 export AQUA_ENDPOINT="https://eu-1.api.cloudsploit.com"
 
 # For Username/Password Authentication
