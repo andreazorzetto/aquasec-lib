@@ -64,6 +64,7 @@ against a real destination before designing an ingestion pipeline around it.
 
 import os
 
+from .exceptions import ApiError
 from .auth import decode_token_claims, get_api_endpoint
 from .common import _request_with_retry
 
@@ -129,7 +130,7 @@ def resolve_region(token=None, verbose=False):
                 print(f"Region detected from token: {region}")
             return region
 
-    region = _region_from_url(get_api_endpoint())
+    region = _region_from_url(get_api_endpoint(token))
     if region and verbose:
         print(f"Region detected from API endpoint: {region}")
     return region
@@ -363,7 +364,7 @@ def get_exports(base_url, token, verbose=False):
     """
     res = api_list_exports(base_url, token, verbose=verbose)
     if res.status_code != 200:
-        raise Exception(f"Failed to list exports ({res.status_code}): {res.text[:200]}")
+        raise ApiError(f"Failed to list exports ({res.status_code}): {res.text[:200]}")
     return res.json().get("data") or []
 
 
@@ -385,7 +386,7 @@ def get_export_capacity(base_url, token, verbose=False):
     """
     res = api_get_export_metadata(base_url, token, verbose=verbose)
     if res.status_code != 200:
-        raise Exception(f"Failed to read export metadata ({res.status_code}): "
+        raise ApiError(f"Failed to read export metadata ({res.status_code}): "
                         f"{res.text[:200]}")
     data = res.json().get("data") or {}
     return data.get("exports_active_amount"), data.get("exports_active_limit")
@@ -410,7 +411,7 @@ def get_export_entities(base_url, token, verbose=False):
     """
     res = api_get_export_entities(base_url, token, verbose=verbose)
     if res.status_code != 200:
-        raise Exception(f"Failed to read export entities ({res.status_code}): "
+        raise ApiError(f"Failed to read export entities ({res.status_code}): "
                         f"{res.text[:200]}")
 
     entities = {}
@@ -447,7 +448,7 @@ def get_integrations(base_url, token, only_working=False, verbose=False):
     """
     res = api_list_integrations(base_url, token, verbose=verbose)
     if res.status_code != 200:
-        raise Exception(f"Failed to list integrations ({res.status_code}): "
+        raise ApiError(f"Failed to list integrations ({res.status_code}): "
                         f"{res.text[:200]}")
 
     integrations = res.json().get("data") or []
@@ -485,7 +486,7 @@ def create_export(base_url, token, name, integration_id, entity_type="vulnerabil
     if check_capacity:
         active, limit = get_export_capacity(base_url, token, verbose=verbose)
         if active is not None and limit is not None and active >= limit:
-            raise Exception(
+            raise ApiError(
                 f"Tenant is at its active-export limit ({active}/{limit}). "
                 f"Delete or deactivate an export before creating another."
             )
@@ -504,5 +505,5 @@ def create_export(base_url, token, name, integration_id, entity_type="vulnerabil
         429: "the tenant is at its active-export limit",
     }
     hint = hints.get(res.status_code)
-    raise Exception(f"Failed to create export ({res.status_code}"
+    raise ApiError(f"Failed to create export ({res.status_code}"
                     f"{': ' + hint if hint else ''}): {res.text[:200]}")

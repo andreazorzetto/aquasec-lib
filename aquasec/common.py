@@ -2,8 +2,11 @@
 Common utility functions for Aqua library
 """
 
+import base64
 import csv
 import json
+import threading
+import time
 import requests
 from os.path import exists
 from urllib.parse import urlparse
@@ -16,12 +19,46 @@ from urllib.parse import urlparse
 #   2. authenticate(), when a complete set of AQUA_* variables is present;
 #   3. nothing -- the 401 is returned to the caller.
 #
-# _refreshed maps the token a caller keeps passing in to the fresh one obtained
-# for it, so a refresh is only ever applied to the token it replaced. A single
-# global "cached token" would silently override whatever token a caller passed,
-# which is exactly wrong for a process that juggles more than one.
+# _refreshed maps the token a caller keeps passing in to (fresh token, when it
+# was obtained), so a refresh is only ever applied to the token it replaced. A
+# single global "cached token" would silently override whatever token a caller
+# passed, which is exactly wrong for a process that juggles more than one.
 _token_provider = None
 _refreshed = {}
+_refresh_lock = threading.Lock()
+
+# A token obtained by refresh this recently and *still* rejected is not an
+# expiry -- it is a wrong host, a revoked role, a token scope problem -- and
+# signing in again on every request would only hammer the auth endpoint.
+REFRESH_BACKOFF_SECONDS = 60
+
+# Per-token maps must not grow for the lifetime of a long-running process.
+_TOKEN_MAP_MAX = 64
+
+
+def _jwt_exp(token):
+    """Expiry (epoch seconds) from a JWT's claims, or None if unreadable."""
+    try:
+        payload = token.split('.')[1]
+        payload += '=' * (-len(payload) % 4)
+        return json.loads(base64.urlsafe_b64decode(payload)).get('exp')
+    except Exception:
+        return None
+
+
+def _prune_token_map(mapping, now=None):
+    """
+    Drop entries keyed by expired tokens, then the oldest beyond ``_TOKEN_MAP_MAX``.
+
+    Both per-token maps in the library (refreshed tokens here, issuing
+    endpoints in ``auth``) are keyed by bearer tokens, which expire; anything
+    keyed by a dead token can never be looked up again.
+    """
+    now = time.time() if now is None else now
+    for tok in [t for t in mapping if (_jwt_exp(t) or float('inf')) < now]:
+        del mapping[tok]
+    while len(mapping) > _TOKEN_MAP_MAX:
+        del mapping[next(iter(mapping))]
 
 
 def set_token_provider(provider):
@@ -254,7 +291,8 @@ def _request_with_retry(method, url, token, headers=None, verbose=False, **kwarg
         Response object from the API call
     """
     # A refresh obtained earlier for this exact token supersedes it.
-    effective_token = _refreshed.get(token, token)
+    entry = _refreshed.get(token)
+    effective_token = entry[0] if entry else token
 
     # Build headers
     if headers is None:
@@ -269,11 +307,24 @@ def _request_with_retry(method, url, token, headers=None, verbose=False, **kwarg
 
     # Handle 401 - token expired (or otherwise rejected)
     if res.status_code == 401:
-        new_token = _refresh_token(verbose=verbose)
-        if new_token is None:
+        if entry and time.time() - entry[1] < REFRESH_BACKOFF_SECONDS:
+            if verbose:
+                print("Token was refreshed %ds ago and is still rejected (401); not "
+                      "signing in again. Check the host, the role and the token scope."
+                      % (time.time() - entry[1]))
             return res
 
-        _refreshed[token] = new_token
+        with _refresh_lock:
+            # Another thread may have refreshed this token while we waited.
+            current = _refreshed.get(token)
+            if current is not None and current is not entry:
+                new_token = current[0]
+            else:
+                new_token = _refresh_token(verbose=verbose)
+                if not new_token:
+                    return res
+                _refreshed[token] = (new_token, time.time())
+                _prune_token_map(_refreshed)
 
         # Update header and retry
         headers['Authorization'] = f'Bearer {new_token}'

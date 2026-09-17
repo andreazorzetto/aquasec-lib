@@ -31,17 +31,6 @@ def _resp(status, text=""):
     return r
 
 
-@pytest.fixture(autouse=True)
-def _clean_state():
-    set_token_provider(None)
-    clear_token_cache()
-    auth_mod.set_api_endpoint(None)
-    yield
-    set_token_provider(None)
-    clear_token_cache()
-    auth_mod.set_api_endpoint(None)
-
-
 class TestRefreshOn401:
 
     @patch.object(common.requests, "request")
@@ -150,6 +139,112 @@ class TestRefreshCacheIsScopedToTheToken:
         with pytest.raises(TypeError):
             set_token_provider("not callable")
 
+    @patch.object(common.requests, "request")
+    def test_falsy_provider_result_is_not_used(self, req):
+        """A provider that forgot its return (None) or returned '' must not
+        be cached and sent as ``Bearer ``; the 401 goes back to the caller."""
+        req.return_value = _resp(401)
+        set_token_provider(lambda: "")
+        res = _request_with_retry("GET", "https://t/a", "stale")
+        assert res.status_code == 401
+        assert req.call_count == 1
+        assert common._refreshed == {}
+
+
+class TestPersistent401DoesNotHammerSignIn:
+    """
+    A 401 that survives a refresh is not an expiry -- wrong regional host,
+    revoked role, token scope -- and signing in again on every request would
+    only hammer the auth endpoint. Within the backoff window the 401 is
+    returned; after it a genuine later expiry can still be refreshed.
+    """
+
+    @patch.object(common.requests, "request")
+    def test_second_401_within_backoff_returns_without_refresh(self, req):
+        req.return_value = _resp(401)
+        calls = []
+        set_token_provider(lambda: calls.append(1) or "fresh")
+
+        _request_with_retry("GET", "https://t/a", "stale")   # 401 -> refresh -> 401
+        _request_with_retry("GET", "https://t/a", "stale")   # 401, refreshed just now
+        _request_with_retry("GET", "https://t/a", "stale")
+
+        assert len(calls) == 1
+        assert req.call_count == 4          # 2 for the first call, 1 each after
+
+    @patch.object(common.requests, "request")
+    def test_refresh_allowed_again_after_backoff(self, req):
+        req.return_value = _resp(401)
+        calls = []
+        set_token_provider(lambda: calls.append(1) or "fresh-%d" % len(calls))
+        _request_with_retry("GET", "https://t/a", "stale")
+        # age the refresh past the window
+        tok, at = common._refreshed["stale"]
+        common._refreshed["stale"] = (tok, at - common.REFRESH_BACKOFF_SECONDS - 1)
+        _request_with_retry("GET", "https://t/a", "stale")
+        assert len(calls) == 2
+
+
+class TestRefreshIsSingleFlight:
+
+    def test_concurrent_401s_sign_in_once(self):
+        import threading
+        barrier = threading.Barrier(8)
+        sign_ins = []
+
+        def provider():
+            sign_ins.append(1)
+            return "fresh"
+
+        def fake_request(method, url, headers=None, **kw):
+            return _resp(200) if headers["Authorization"] == "Bearer fresh" else _resp(401)
+
+        set_token_provider(provider)
+        results = []
+        def worker():
+            barrier.wait()
+            results.append(_request_with_retry("GET", "https://t/a", "stale").status_code)
+
+        with patch.object(common.requests, "request", side_effect=fake_request):
+            threads = [threading.Thread(target=worker) for _ in range(8)]
+            for t in threads: t.start()
+            for t in threads: t.join()
+
+        assert results == [200] * 8
+        assert len(sign_ins) == 1
+
+
+class TestTokenMapsAreBounded:
+
+    @staticmethod
+    def _jwt(exp):
+        import base64, json
+        body = base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode()).decode().rstrip("=")
+        return f"h.{body}.s"
+
+    def test_expired_keys_are_pruned(self):
+        import time
+        dead, live = self._jwt(int(time.time()) - 10), self._jwt(int(time.time()) + 3600)
+        m = {dead: 1, live: 2, "not-a-jwt": 3}
+        common._prune_token_map(m)
+        assert dead not in m and live in m and "not-a-jwt" in m
+
+    def test_capped_at_max_entries_oldest_first(self):
+        m = {f"t{i}": i for i in range(common._TOKEN_MAP_MAX + 5)}
+        common._prune_token_map(m)
+        assert len(m) == common._TOKEN_MAP_MAX
+        assert "t0" not in m and f"t{common._TOKEN_MAP_MAX + 4}" in m
+
+    @patch.object(common.requests, "request")
+    def test_refresh_map_is_pruned_on_insert(self, req):
+        req.side_effect = [_resp(401), _resp(200)]
+        set_token_provider(lambda: "fresh")
+        for i in range(common._TOKEN_MAP_MAX):
+            common._refreshed[f"old{i}"] = ("x", 0)
+        _request_with_retry("GET", "https://t/a", "stale")
+        assert len(common._refreshed) <= common._TOKEN_MAP_MAX
+        assert "stale" in common._refreshed
+
 
 class TestAuthRaisesInsteadOfExiting:
 
@@ -241,20 +336,20 @@ class TestSupplyChainRegionWithoutEnvironment:
 
     CONSOLE = "https://c1fae5dbe2.cloud.aquasec.com"
 
-    def test_api_auth_records_its_endpoint(self):
-        ok = _resp(200); ok.json = lambda: {"data": "tok"}
+    def test_api_auth_records_its_endpoint_for_that_token(self):
+        ok = _resp(200); ok.json = lambda: {"data": "tok-eu"}
         with patch.dict(os.environ, {}, clear=True), \
              patch.object(auth_mod.requests, "post", return_value=ok):
             auth_mod.api_auth("k", "s", "https://eu-1.api.cloudsploit.com", "role", '["ANY:*"]')
-        assert auth_mod.get_api_endpoint() == "https://eu-1.api.cloudsploit.com"
-        assert _get_supply_chain_url(self.CONSOLE) == "https://api.eu-1.supply-chain.cloud.aquasec.com"
+        assert auth_mod.get_api_endpoint("tok-eu") == "https://eu-1.api.cloudsploit.com"
+        assert _get_supply_chain_url(self.CONSOLE, "tok-eu") == "https://api.eu-1.supply-chain.cloud.aquasec.com"
 
     def test_user_pass_saas_records_its_endpoint(self):
-        ok = _resp(200); ok.json = lambda: {"data": {"token": "tok"}}
+        ok = _resp(200); ok.json = lambda: {"data": {"token": "tok-asia"}}
         with patch.dict(os.environ, {}, clear=True), \
              patch.object(auth_mod.requests, "post", return_value=ok):
             auth_mod.user_pass_saas_auth("u", "p", "https://asia-1.api.cloudsploit.com")
-        assert _get_supply_chain_url(self.CONSOLE) == "https://api.asia-1.supply-chain.cloud.aquasec.com"
+        assert _get_supply_chain_url(self.CONSOLE, "tok-asia") == "https://api.asia-1.supply-chain.cloud.aquasec.com"
 
     def test_failed_sign_in_records_nothing(self):
         with patch.dict(os.environ, {}, clear=True), \
@@ -263,19 +358,38 @@ class TestSupplyChainRegionWithoutEnvironment:
                 auth_mod.api_auth("k", "s", "https://eu-1.api.cloudsploit.com", "role", '["ANY:*"]')
         assert auth_mod.get_api_endpoint() is None
 
-    def test_recorded_endpoint_wins_over_environment(self):
-        """The endpoint that issued the token in hand beats a stale env var."""
-        auth_mod.set_api_endpoint("https://asia-1.api.cloudsploit.com")
+    def test_two_tenants_in_one_process_do_not_cross(self):
+        """The reviewer's case: an eu-1 sign-in must not re-region a US token."""
+        auth_mod.set_api_endpoint("https://eu-1.api.cloudsploit.com", "tok-eu")
+        auth_mod.set_api_endpoint("https://api.cloudsploit.com", "tok-us")
+        with patch.dict(os.environ, {}, clear=True):
+            assert _get_supply_chain_url(self.CONSOLE, "tok-eu") == "https://api.eu-1.supply-chain.cloud.aquasec.com"
+            assert _get_supply_chain_url(self.CONSOLE, "tok-us") == "https://api.supply-chain.cloud.aquasec.com"
+
+    def test_this_tokens_record_wins_over_environment(self):
+        auth_mod.set_api_endpoint("https://asia-1.api.cloudsploit.com", "tok")
         with patch.dict(os.environ, {"AQUA_ENDPOINT": "https://eu-1.api.cloudsploit.com"}, clear=True):
-            assert _get_supply_chain_url(self.CONSOLE) == "https://api.asia-1.supply-chain.cloud.aquasec.com"
+            assert _get_supply_chain_url(self.CONSOLE, "tok") == "https://api.asia-1.supply-chain.cloud.aquasec.com"
+
+    def test_environment_wins_over_someone_elses_sign_in(self):
+        """A token obtained elsewhere, with AQUA_ENDPOINT set, is not misled by
+        whichever tenant this process signed in to last."""
+        auth_mod.set_api_endpoint("https://asia-1.api.cloudsploit.com", "other-tok")
+        with patch.dict(os.environ, {"AQUA_ENDPOINT": "https://eu-1.api.cloudsploit.com"}, clear=True):
+            assert _get_supply_chain_url(self.CONSOLE, "unknown-tok") == "https://api.eu-1.supply-chain.cloud.aquasec.com"
+
+    def test_last_sign_in_is_the_fallback_when_nothing_else_is_known(self):
+        auth_mod.set_api_endpoint("https://eu-1.api.cloudsploit.com", "other-tok")
+        with patch.dict(os.environ, {}, clear=True):
+            assert _get_supply_chain_url(self.CONSOLE, "unknown-tok") == "https://api.eu-1.supply-chain.cloud.aquasec.com"
 
     def test_environment_still_honoured_when_nothing_recorded(self):
         with patch.dict(os.environ, {"AQUA_ENDPOINT": "https://eu-1.api.cloudsploit.com"}, clear=True):
             assert _get_supply_chain_url(self.CONSOLE) == "https://api.eu-1.supply-chain.cloud.aquasec.com"
 
     def test_console_region_wins_over_everything(self):
-        auth_mod.set_api_endpoint("https://asia-1.api.cloudsploit.com")
-        assert _get_supply_chain_url("https://x.eu-1.cloud.aquasec.com") == "https://api.eu-1.supply-chain.cloud.aquasec.com"
+        auth_mod.set_api_endpoint("https://asia-1.api.cloudsploit.com", "tok")
+        assert _get_supply_chain_url("https://x.eu-1.cloud.aquasec.com", "tok") == "https://api.eu-1.supply-chain.cloud.aquasec.com"
 
     def test_no_region_anywhere_means_us_host(self):
         with patch.dict(os.environ, {}, clear=True):

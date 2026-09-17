@@ -4,6 +4,7 @@ VM inventory related API functions for Aqua library
 
 import urllib3
 
+from .exceptions import ApiError
 from .common import _request_with_retry
 
 # Disable SSL warnings for unverified HTTPS requests
@@ -73,7 +74,7 @@ def get_all_vms(server, token, scope=None, verbose=False):
         res = api_get_vms(server, token, page, page_size, scope, verbose)
         
         if res.status_code != 200:
-            raise Exception(f"API call failed with status {res.status_code}: {res.text}")
+            raise ApiError(f"API call failed with status {res.status_code}: {res.text}", status_code=res.status_code, response_text=res.text)
         
         data = res.json()
         vms = data.get("result", [])

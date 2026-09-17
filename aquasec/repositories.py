@@ -2,6 +2,7 @@
 Repository-related API functions for Aqua library
 """
 
+from .exceptions import ApiError
 from .common import _request_with_retry
 
 
@@ -77,7 +78,7 @@ def get_all_repositories(server, token, registry=None, scope=None, verbose=False
         res = api_get_repositories(server, token, page, page_size, registry, scope, verbose)
         
         if res.status_code != 200:
-            raise Exception(f"API call failed with status {res.status_code}: {res.text}")
+            raise ApiError(f"API call failed with status {res.status_code}: {res.text}", status_code=res.status_code, response_text=res.text)
         
         data = res.json()
         repos = data.get("result", [])
@@ -152,10 +153,10 @@ def get_repo_count_by_scope(server, token, scopes_list, verbose=False):
         except KeyError:
             if verbose:
                 print(f"DEBUG: Missing 'count' field for scope '{scope}' - API response: {response_json}")
-            raise Exception(f"API response missing 'count' field for scope '{scope}'")
+            raise ApiError(f"API response missing 'count' field for scope '{scope}'")
         except Exception as e:
             if verbose:
                 print(f"DEBUG: Failed to parse JSON for scope '{scope}': {e}")
-            raise Exception(f"Failed to parse API response for scope '{scope}': {e}")
+            raise ApiError(f"Failed to parse API response for scope '{scope}': {e}")
 
     return repos_by_scope

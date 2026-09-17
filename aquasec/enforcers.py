@@ -311,7 +311,7 @@ def get_all_enforcer_groups(server, token, verbose=False):
         res = api_get_enforcer_groups(server, token, None, None, page, 100, verbose)
 
         if res.status_code != 200:
-            raise Exception(
+            raise ApiError(
                 "Failed to list enforcer groups: HTTP %d - %s" % (res.status_code, res.text)
             )
 

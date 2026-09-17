@@ -93,8 +93,11 @@ The library never calls `sys.exit()`. Failures are raised as subclasses of
 | Exception | Raised when |
 |---|---|
 | `MissingCredentialsError` | `authenticate()` finds no complete set of `AQUA_*` variables |
-| `AuthenticationError` | the platform rejects the credentials (`.status_code`, `.response_text`) |
-| `ApiError` | an API call returns a status the library cannot handle (`.status_code`, `.response_text`) |
+| `AuthenticationError` | the platform rejects the credentials |
+| `ApiError` | an API call returns a response the library cannot handle |
+
+All carry `.status_code` and `.response_text` (None unless the error came from
+an HTTP response).
 
 `MissingCredentialsError` is an `AuthenticationError`, and both are `AquaError`s,
 so `except AquaError` catches anything the library raises deliberately.

@@ -11,7 +11,7 @@ import requests
 import time
 from os import environ
 
-from .common import normalize_console_url
+from .common import normalize_console_url, _prune_token_map
 from .exceptions import AuthenticationError, MissingCredentialsError
 
 
@@ -62,33 +62,46 @@ def get_console_urls_from_token(token):
 
 
 # The regional API endpoint (e.g. https://eu-1.api.cloudsploit.com) that issued
-# the current token. Some services -- the Supply Chain API -- live on a
-# per-region host that is not discoverable from the console URL or the token,
-# only from where the sign-in happened. Recorded by api_auth() and
-# user_pass_saas_auth() so callers that hold their own credentials do not have
-# to export AQUA_ENDPOINT just to make the region known.
-_api_endpoint = None
+# a token. Some services -- the Supply Chain API -- live on a per-region host
+# that is not discoverable from the console URL or the token's claims, only
+# from where the sign-in happened. api_auth() and user_pass_saas_auth() record
+# it per token, so callers that hold their own credentials do not have to
+# export AQUA_ENDPOINT just to make the region known, and a process holding
+# tokens for more than one tenant is not misled by whichever signed in last.
+_endpoint_by_token = {}
+_last_api_endpoint = None
 
 
-def set_api_endpoint(api_endpoint):
+def set_api_endpoint(api_endpoint, token=None):
     """
-    Record the regional API endpoint tokens are issued from.
+    Record the regional API endpoint a token was issued from.
 
-    ``api_auth()`` and ``user_pass_saas_auth()`` call this for you. Set it
-    explicitly only when a token was obtained some other way.
+    ``api_auth()`` and ``user_pass_saas_auth()`` call this for you. Call it
+    yourself only for a token obtained some other way. With ``token`` the
+    record is tied to that token; without, it is the process-wide fallback.
+    ``set_api_endpoint(None)`` forgets everything.
     """
-    global _api_endpoint
-    _api_endpoint = api_endpoint or None
+    global _last_api_endpoint
+    if api_endpoint is None and token is None:
+        _endpoint_by_token.clear()
+        _last_api_endpoint = None
+        return
+    if token is not None:
+        _endpoint_by_token[token] = api_endpoint
+        _prune_token_map(_endpoint_by_token)
+    _last_api_endpoint = api_endpoint or _last_api_endpoint
 
 
-def get_api_endpoint():
+def get_api_endpoint(token=None):
     """
-    The API endpoint the current token came from, else ``AQUA_ENDPOINT``, else None.
+    The API endpoint ``token`` was issued from, or the best available guess.
 
-    The recorded endpoint wins over the environment: it is the one that actually
-    issued the token in hand.
+    In order: the endpoint recorded for this exact token; ``AQUA_ENDPOINT``;
+    the endpoint of the most recent sign-in in this process; None.
     """
-    return _api_endpoint or environ.get('AQUA_ENDPOINT') or None
+    if token is not None and token in _endpoint_by_token:
+        return _endpoint_by_token[token]
+    return environ.get('AQUA_ENDPOINT') or _last_api_endpoint or None
 
 
 def env_credentials_present():
@@ -135,9 +148,10 @@ AQUA_ENDPOINT='https://eu-1.api.cloudsploit.com'
 #CSP_ENDPOINT='https://xxxxxxxxxx.cloud.aquasec.com'
 ----------------------------------------
 
-If your credentials live somewhere other than the environment, call
-api_auth() directly and register the result with set_token_provider() so
-expired tokens can be refreshed the same way."""
+If your credentials live somewhere other than the environment, write a
+function that fetches them and returns api_auth(...), use it to get your
+token, and register that same function with set_token_provider() so expired
+tokens are refreshed the same way."""
 
 
 def authenticate(verbose=False):
@@ -225,7 +239,7 @@ def api_auth(api_key, api_secret, api_endpoint, api_role, api_methods, verbose=F
     # Extract status and token from the response
     if response.status_code == 200:
         token = response.json()['data']
-        set_api_endpoint(api_endpoint)
+        set_api_endpoint(api_endpoint, token)
     else:
         raise AuthenticationError("Authentication failed. %s" % response.text,
                                   status_code=response.status_code,
@@ -252,7 +266,7 @@ def user_pass_saas_auth(user, passwd, api_endpoint, verbose=False):
     if res.status_code == 200:
         response_data = res.json()
         token = response_data["data"]["token"]
-        set_api_endpoint(api_endpoint)
+        set_api_endpoint(api_endpoint, token)
         if verbose:
             # Extract user info if available
             user_data = response_data.get("data", {})

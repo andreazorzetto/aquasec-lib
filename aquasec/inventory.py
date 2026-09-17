@@ -5,6 +5,7 @@ This module provides functions for querying and managing the Hub inventory
 at /api/v2/hub/inventory/assets/images/list endpoint.
 """
 
+from .exceptions import ApiError
 from .common import _request_with_retry
 
 
@@ -198,7 +199,7 @@ def get_all_inventory_images(server, token, scope=None, first_found_date=None,
         )
 
         if res.status_code != 200:
-            raise Exception(f"API call failed with status {res.status_code}: {res.text}")
+            raise ApiError(f"API call failed with status {res.status_code}: {res.text}", status_code=res.status_code, response_text=res.text)
 
         data = res.json()
         images = data.get("result", [])

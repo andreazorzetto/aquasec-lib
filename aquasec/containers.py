@@ -13,6 +13,7 @@ it is often more useful to group by cluster/namespace or by image, so this modul
 returns the raw container objects and leaves grouping to the caller.
 """
 
+from .exceptions import ApiError
 from .common import _request_with_retry
 
 
@@ -122,7 +123,7 @@ def get_all_containers(server, token, scope=None, cluster=None, namespace=None,
                                  scope=scope, cluster=cluster, namespace=namespace,
                                  status=status, verbose=verbose)
         if res.status_code != 200:
-            raise Exception(f"API call failed with status {res.status_code}: {res.text}")
+            raise ApiError(f"API call failed with status {res.status_code}: {res.text}", status_code=res.status_code, response_text=res.text)
 
         data = res.json()
         containers = data.get("result", [])
