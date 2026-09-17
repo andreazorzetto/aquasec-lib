@@ -2,6 +2,7 @@
 Application Scopes related API functions for Aqua library
 """
 
+from .exceptions import ApiError
 from .common import _request_with_retry
 
 
@@ -42,7 +43,7 @@ def get_app_scopes(server, token, verbose=False):
         if res.status_code != 200:
             # Surface a real error instead of printing to stdout and exiting;
             # the caller (or the CLI's top-level handler) decides what to do.
-            raise Exception(
+            raise ApiError(
                 f"Failed to list application scopes: HTTP {res.status_code} - {res.text}"
             )
 

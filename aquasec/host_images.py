@@ -13,6 +13,7 @@ tag or digest), not each individual image instance, so this module provides help
 to enumerate host images per scope and collapse them to unique repository names.
 """
 
+from .exceptions import ApiError
 from .common import _request_with_retry
 
 
@@ -140,7 +141,7 @@ def get_all_host_images(server, token, scope=None, page_size=200, verbose=False)
         res = api_get_host_images(server, token, page=page, page_size=page_size,
                                   scope=scope, verbose=verbose)
         if res.status_code != 200:
-            raise Exception(f"API call failed with status {res.status_code}: {res.text}")
+            raise ApiError(f"API call failed with status {res.status_code}: {res.text}", status_code=res.status_code, response_text=res.text)
 
         data = res.json()
         images = data.get("result", [])

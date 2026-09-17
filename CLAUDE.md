@@ -65,7 +65,8 @@ cd examples/image-cleanup-utility && python aqua_image_cleanup.py --help
 - **containers.py**: Running-container inventory API with scope filtering (added in v0.9.0)
 - **vulnerabilities.py**: Vulnerability findings via **per-image** extraction, not deep pagination (added in v0.11.0)
 - **scopes.py**: Application scope functions
-- **common.py**: Utility functions and `_request_with_retry` (auto re-auth on 401)
+- **common.py**: Utility functions and `_request_with_retry` (auto re-auth on 401 via a registered token provider, else `AQUA_*` env vars, else the 401 is returned)
+- **exceptions.py**: `AquaError` hierarchy (`AuthenticationError`, `MissingCredentialsError`, `ApiError`). The library raises, never `sys.exit()`s (added in v0.13.0)
 
 ### Authentication Flow
 1. Credentials stored via `ConfigManager` with encryption
@@ -140,7 +141,7 @@ Secure, profile-based credential storage with:
 
 ## Version Information
 
-Current version: 0.12.1 (see setup.py and aquasec/__init__.py)
+Current version: 0.13.0 (see setup.py and aquasec/__init__.py)
 
 Major versions:
 - v0.4.0: Added serverless functions support, enforcer optimizations
@@ -153,3 +154,4 @@ Major versions:
 - v0.11.0: Added vulnerabilities module and the vuln-extract utility (per-image extraction; avoids the quadratic cost of deep offset pagination)
 - v0.12.0: Added enforcer group capability reporting and the `license capabilities` command (AMP only; enforcer types that cannot act on a capability are excluded from totals)
 - v0.12.1: `AQUA_METHODS` defaults to `ANY:*` (a bare `ANY` is denied by the Supply Chain API); license-utility 0.6.0 folds Advanced Malware Protection into `license count` and drops the utilisation percentage
+- v0.13.0: Token provider for refresh without env vars (`set_token_provider`), `aquasec.exceptions`, and no more `sys.exit()` inside the library — auth and enforcer failures raise instead

@@ -76,6 +76,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from os.path import exists
 
+from .exceptions import ApiError
 from .common import _request_with_retry
 from .inventory import get_all_inventory_images
 
@@ -311,7 +312,7 @@ def get_image_vulnerabilities(server, token, page_size=500, max_retries=3,
             time.sleep(retry_backoff * attempt)
 
         if res is None or res.status_code != 200:
-            raise Exception(f"Vulnerability query failed after {max_retries} attempts "
+            raise ApiError(f"Vulnerability query failed after {max_retries} attempts "
                             f"({last_error})")
 
         results = res.json().get("result") or []
@@ -881,7 +882,7 @@ def get_available_columns(server, token, entity_type="images", verbose=False):
     """
     res = api_get_available_columns(server, token, entity_type, verbose=verbose)
     if res.status_code != 200:
-        raise Exception(f"Failed to list export columns ({res.status_code}): "
+        raise ApiError(f"Failed to list export columns ({res.status_code}): "
                         f"{res.text[:200]}")
 
     columns = {}
@@ -1086,23 +1087,23 @@ def export_vulnerabilities(server, token, entity_type="images", filters=None,
             available = get_exporter_names(server, token, entity_type, verbose=verbose)
             if available:
                 detail += f"\n  Exporters available for '{entity_type}': {available}"
-        raise Exception(f"Failed to trigger export ({res.status_code}): {detail}")
+        raise ApiError(f"Failed to trigger export ({res.status_code}): {detail}")
 
     job_token = res.json().get("token")
     if not job_token:
-        raise Exception(f"Export trigger returned no token: {res.text[:200]}")
+        raise ApiError(f"Export trigger returned no token: {res.text[:200]}")
     if verbose:
         print(f"Export job token: {job_token}")
 
     stream = api_stream_export(server, token, job_token, entity_type=entity_type,
                                timeout=timeout, verbose=verbose)
     if stream.status_code != 200:
-        raise Exception(f"Failed to stream export ({stream.status_code}): "
+        raise ApiError(f"Failed to stream export ({stream.status_code}): "
                         f"{stream.text[:300]}")
 
     archive = stream.content
     if not archive[:2] == b'PK':
-        raise Exception("Export stream did not return a ZIP archive")
+        raise ApiError("Export stream did not return a ZIP archive")
 
     if output_file:
         with open(output_file, "wb") as handle:

@@ -2,14 +2,119 @@
 Common utility functions for Aqua library
 """
 
+import base64
 import csv
 import json
+import threading
+import time
 import requests
 from os.path import exists
 from urllib.parse import urlparse
 
-# Module-level token cache for re-authentication
-_cached_token = None
+# How an expired token gets replaced, in order of preference:
+#
+#   1. a provider registered with set_token_provider() -- for applications that
+#      hold their own credentials (secrets manager, vault) and sign in with
+#      api_auth() rather than through AQUA_* environment variables;
+#   2. authenticate(), when a complete set of AQUA_* variables is present;
+#   3. nothing -- the 401 is returned to the caller.
+#
+# _refreshed maps the token a caller keeps passing in to (fresh token, when it
+# was obtained), so a refresh is only ever applied to the token it replaced. A
+# single global "cached token" would silently override whatever token a caller
+# passed, which is exactly wrong for a process that juggles more than one.
+_token_provider = None
+_refreshed = {}
+_refresh_lock = threading.Lock()
+
+# A token obtained by refresh this recently and *still* rejected is not an
+# expiry -- it is a wrong host, a revoked role, a token scope problem -- and
+# signing in again on every request would only hammer the auth endpoint.
+REFRESH_BACKOFF_SECONDS = 60
+
+# Per-token maps must not grow for the lifetime of a long-running process.
+_TOKEN_MAP_MAX = 64
+
+
+def _jwt_exp(token):
+    """Expiry (epoch seconds) from a JWT's claims, or None if unreadable."""
+    try:
+        payload = token.split('.')[1]
+        payload += '=' * (-len(payload) % 4)
+        return json.loads(base64.urlsafe_b64decode(payload)).get('exp')
+    except Exception:
+        return None
+
+
+def _prune_token_map(mapping, now=None):
+    """
+    Drop entries keyed by expired tokens, then the oldest beyond ``_TOKEN_MAP_MAX``.
+
+    Both per-token maps in the library (refreshed tokens here, issuing
+    endpoints in ``auth``) are keyed by bearer tokens, which expire; anything
+    keyed by a dead token can never be looked up again.
+    """
+    now = time.time() if now is None else now
+    for tok in [t for t in mapping if (_jwt_exp(t) or float('inf')) < now]:
+        del mapping[tok]
+    while len(mapping) > _TOKEN_MAP_MAX:
+        del mapping[next(iter(mapping))]
+
+
+def set_token_provider(provider):
+    """
+    Register a zero-argument callable that returns a fresh bearer token.
+
+    Called by ``_request_with_retry`` when a request comes back 401. Use this
+    when the credentials are not in the environment::
+
+        from aquasec import api_auth, set_token_provider
+
+        def fresh_token():
+            key, secret = vault.read("aqua")
+            return api_auth(key, secret, endpoint, role, '["ANY:*"]')
+
+        set_token_provider(fresh_token)
+        token = fresh_token()
+
+    Pass ``None`` to unregister.
+    """
+    global _token_provider
+    if provider is not None and not callable(provider):
+        raise TypeError("token provider must be callable or None")
+    _token_provider = provider
+    _refreshed.clear()
+
+
+def get_token_provider():
+    """Return the registered token provider, or None."""
+    return _token_provider
+
+
+def _refresh_token(verbose=False):
+    """
+    Obtain a replacement token, or return None if there is no way to.
+
+    Never raises for the *absence* of a way to refresh -- that is an ordinary
+    outcome and the caller gets its 401 back. A provider or ``authenticate()``
+    that fails while trying does raise, since that is a real error.
+    """
+    if _token_provider is not None:
+        if verbose:
+            print("Token rejected (401). Refreshing via the registered token provider...")
+        return _token_provider()
+
+    from .auth import authenticate, env_credentials_present
+    if env_credentials_present():
+        if verbose:
+            print("Token rejected (401). Re-authenticating from environment credentials...")
+        return authenticate(verbose=verbose)
+
+    if verbose:
+        print("Token rejected (401) and no way to refresh it: no token provider is "
+              "registered and no AQUA_* credentials are in the environment. "
+              "Returning the 401 to the caller.")
+    return None
 
 
 def normalize_console_url(url):
@@ -169,7 +274,10 @@ def _request_with_retry(method, url, token, headers=None, verbose=False, **kwarg
     Make HTTP request with automatic re-authentication on 401.
 
     All API functions should use this instead of calling requests directly.
-    This ensures automatic token refresh on 401 responses.
+    On a 401 the token is refreshed through the registered token provider, or
+    through ``authenticate()`` when ``AQUA_*`` credentials are present, and the
+    request is retried once. If neither is available the 401 response is
+    returned as-is for the caller to handle; the library never exits.
 
     Args:
         method: HTTP method ('GET', 'POST', 'DELETE', etc.)
@@ -182,10 +290,9 @@ def _request_with_retry(method, url, token, headers=None, verbose=False, **kwarg
     Returns:
         Response object from the API call
     """
-    global _cached_token
-
-    # Use cached token if available (from a previous re-auth)
-    effective_token = _cached_token if _cached_token else token
+    # A refresh obtained earlier for this exact token supersedes it.
+    entry = _refreshed.get(token)
+    effective_token = entry[0] if entry else token
 
     # Build headers
     if headers is None:
@@ -198,14 +305,26 @@ def _request_with_retry(method, url, token, headers=None, verbose=False, **kwarg
     # Make the request
     res = requests.request(method, url, headers=headers, **kwargs)
 
-    # Handle 401 - token expired
+    # Handle 401 - token expired (or otherwise rejected)
     if res.status_code == 401:
-        if verbose:
-            print("Token expired. Re-authenticating...")
+        if entry and time.time() - entry[1] < REFRESH_BACKOFF_SECONDS:
+            if verbose:
+                print("Token was refreshed %ds ago and is still rejected (401); not "
+                      "signing in again. Check the host, the role and the token scope."
+                      % (time.time() - entry[1]))
+            return res
 
-        from .auth import authenticate
-        new_token = authenticate(verbose=verbose)
-        _cached_token = new_token
+        with _refresh_lock:
+            # Another thread may have refreshed this token while we waited.
+            current = _refreshed.get(token)
+            if current is not None and current is not entry:
+                new_token = current[0]
+            else:
+                new_token = _refresh_token(verbose=verbose)
+                if not new_token:
+                    return res
+                _refreshed[token] = (new_token, time.time())
+                _prune_token_map(_refreshed)
 
         # Update header and retry
         headers['Authorization'] = f'Bearer {new_token}'
@@ -218,9 +337,8 @@ def _request_with_retry(method, url, token, headers=None, verbose=False, **kwarg
 
 
 def clear_token_cache():
-    """Clear the cached token. Useful for testing or forcing re-auth."""
-    global _cached_token
-    _cached_token = None
+    """Forget every refreshed token. Useful for testing or forcing re-auth."""
+    _refreshed.clear()
 
 
 def write_content_to_file(file, content):

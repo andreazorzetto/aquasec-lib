@@ -8,11 +8,11 @@ import hashlib
 import hmac
 import json
 import requests
-import sys
 import time
 from os import environ
 
-from .common import normalize_console_url
+from .common import normalize_console_url, _prune_token_map
+from .exceptions import AuthenticationError, MissingCredentialsError
 
 
 def decode_token_claims(token):
@@ -61,9 +61,106 @@ def get_console_urls_from_token(token):
     }
 
 
+# The regional API endpoint (e.g. https://eu-1.api.cloudsploit.com) that issued
+# a token. Some services -- the Supply Chain API -- live on a per-region host
+# that is not discoverable from the console URL or the token's claims, only
+# from where the sign-in happened. api_auth() and user_pass_saas_auth() record
+# it per token, so callers that hold their own credentials do not have to
+# export AQUA_ENDPOINT just to make the region known, and a process holding
+# tokens for more than one tenant is not misled by whichever signed in last.
+_endpoint_by_token = {}
+_last_api_endpoint = None
+
+
+def set_api_endpoint(api_endpoint, token=None):
+    """
+    Record the regional API endpoint a token was issued from.
+
+    ``api_auth()`` and ``user_pass_saas_auth()`` call this for you. Call it
+    yourself only for a token obtained some other way. With ``token`` the
+    record is tied to that token; without, it is the process-wide fallback.
+    ``set_api_endpoint(None)`` forgets everything.
+    """
+    global _last_api_endpoint
+    if api_endpoint is None and token is None:
+        _endpoint_by_token.clear()
+        _last_api_endpoint = None
+        return
+    if token is not None:
+        _endpoint_by_token[token] = api_endpoint
+        _prune_token_map(_endpoint_by_token)
+    _last_api_endpoint = api_endpoint or _last_api_endpoint
+
+
+def get_api_endpoint(token=None):
+    """
+    The API endpoint ``token`` was issued from, or the best available guess.
+
+    In order: the endpoint recorded for this exact token; ``AQUA_ENDPOINT``;
+    the endpoint of the most recent sign-in in this process; None.
+    """
+    if token is not None and token in _endpoint_by_token:
+        return _endpoint_by_token[token]
+    return environ.get('AQUA_ENDPOINT') or _last_api_endpoint or None
+
+
+def env_credentials_present():
+    """
+    Report whether the environment holds a complete set of credentials for any
+    auth method ``authenticate()`` supports, without attempting to sign in.
+
+    Mirrors the branch conditions in ``authenticate()`` exactly. Used by the
+    401 refresh path to decide whether an env-var re-auth is even possible, so
+    an application that obtained its token some other way (``api_auth()`` with
+    keys from a secrets manager, say) gets the 401 back instead of a
+    "missing credentials" failure it never asked for.
+    """
+    e = environ.get
+    api_keys = all(e(k) for k in ("AQUA_KEY", "AQUA_SECRET", "AQUA_ENDPOINT", "AQUA_ROLE", "AQUA_METHODS"))
+    user_pass_saas = all(e(k) for k in ("AQUA_USER", "AQUA_PASSWORD", "AQUA_ENDPOINT"))
+    user_pass_onprem = all(e(k) for k in ("AQUA_USER", "AQUA_PASSWORD", "CSP_ENDPOINT")) and not e("AQUA_ENDPOINT")
+    return bool(api_keys or user_pass_saas or user_pass_onprem)
+
+
+MISSING_CREDENTIALS_HELP = """Missing credentials, cannot proceed.
+
+Refer to the docs for info about SaaS API keys auth:
+https://docs.aquasec.com/saas/api-reference/getting-started-with-aqua-platform-apis/api-authentication
+
+Example creds file:
+----------------------------------------
+# Required for SaaS API Keys Auth
+AQUA_KEY=xxxxxxxxxxxxxxxxxx
+AQUA_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxx
+AQUA_ROLE=api_admin_role
+# Method:path pairs the token is allowed to call. 'ANY:*' is any method on any
+# path; a bare 'ANY' has no path part and the Supply Chain API denies every
+# request made with it ("explicit deny in an identity-based policy").
+AQUA_METHODS='ANY:*'
+AQUA_ENDPOINT='https://eu-1.api.cloudsploit.com'
+
+# Required for User/Pass Auth
+#AQUA_USER=email@address.com
+#AQUA_PASSWORD='password'
+
+# SaaS: optional. The console URL is read from the token; set this only to
+# override it. On-prem: required, and AQUA_ENDPOINT must be unset.
+#CSP_ENDPOINT='https://xxxxxxxxxx.cloud.aquasec.com'
+----------------------------------------
+
+If your credentials live somewhere other than the environment, write a
+function that fetches them and returns api_auth(...), use it to get your
+token, and register that same function with set_token_provider() so expired
+tokens are refreshed the same way."""
+
+
 def authenticate(verbose=False):
     """
-    Main authentication function that detects auth method and returns token
+    Main authentication function that detects auth method and returns token.
+
+    Raises ``MissingCredentialsError`` when no complete set of ``AQUA_*``
+    variables is present and ``AuthenticationError`` when the platform rejects
+    them. It never exits the process: that is the caller's decision.
     """
     api_key = environ.get('AQUA_KEY')
     api_secret = environ.get('AQUA_SECRET')
@@ -104,37 +201,8 @@ def authenticate(verbose=False):
             print("Auth method: User/Pass on-prem")
         token = user_pass_onprem_auth(user, password, csp_endpoint)
 
-    # trying to authenticate with user and password
     else:
-        print("""\nMissing credentials, cannot proceed. 
-
-Refer to the docs for info about SaaS API keys auth:
-https://docs.aquasec.com/saas/api-reference/getting-started-with-aqua-platform-apis/api-authentication
-
-Example creds file:
-----------------------------------------
-# Required for SaaS API Keys Auth
-AQUA_KEY=xxxxxxxxxxxxxxxxxx
-AQUA_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxx
-AQUA_ROLE=api_admin_role
-# Method:path pairs the token is allowed to call. 'ANY:*' is any method on any
-# path; a bare 'ANY' has no path part and the Supply Chain API denies every
-# request made with it ("explicit deny in an identity-based policy").
-AQUA_METHODS='ANY:*'
-AQUA_ENDPOINT='https://eu-1.api.cloudsploit.com'
-
-# Required for User/Pass Auth
-#AQUA_USER=email@address.com
-#AQUA_PASSWORD='password'
-
-# SaaS: optional. The console URL is read from the token; set this only to
-# override it. On-prem: required, and AQUA_ENDPOINT must be unset.
-#CSP_ENDPOINT='https://xxxxxxxxxx.cloud.aquasec.com'
-----------------------------------------
-
-AUTHENTICATION CANCELLED
-""")
-        sys.exit(1)
+        raise MissingCredentialsError(MISSING_CREDENTIALS_HELP)
 
     return token
 
@@ -171,9 +239,11 @@ def api_auth(api_key, api_secret, api_endpoint, api_role, api_methods, verbose=F
     # Extract status and token from the response
     if response.status_code == 200:
         token = response.json()['data']
+        set_api_endpoint(api_endpoint, token)
     else:
-        print("Authentication failed.", response.text)
-        sys.exit(1)
+        raise AuthenticationError("Authentication failed. %s" % response.text,
+                                  status_code=response.status_code,
+                                  response_text=response.text)
 
     return token
 
@@ -196,6 +266,7 @@ def user_pass_saas_auth(user, passwd, api_endpoint, verbose=False):
     if res.status_code == 200:
         response_data = res.json()
         token = response_data["data"]["token"]
+        set_api_endpoint(api_endpoint, token)
         if verbose:
             # Extract user info if available
             user_data = response_data.get("data", {})
@@ -205,10 +276,8 @@ def user_pass_saas_auth(user, passwd, api_endpoint, verbose=False):
             # Show token info (first 20 chars only for security)
             print(f"Token (first 20 chars): {token[:20]}...")
     else:
-        print(f"Authentication failed: {res.status_code}")
-        if verbose:
-            print(f"Response: {res.text}")
-        sys.exit(1)
+        raise AuthenticationError(f"Authentication failed: {res.status_code}",
+                                  status_code=res.status_code, response_text=res.text)
 
     return token
 
@@ -228,10 +297,9 @@ def user_pass_onprem_auth(user, passwd, csp_endpoint):
     if res.status_code == 200:
         token = res.json()["token"]
 
-    # Nothing worked. Exit.
     else:
-        print("Authentication failed", res.status_code)
-        sys.exit(1)
+        raise AuthenticationError("Authentication failed %s" % res.status_code,
+                                  status_code=res.status_code, response_text=res.text)
 
     return token
 

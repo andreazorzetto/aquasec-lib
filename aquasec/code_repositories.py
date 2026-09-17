@@ -4,12 +4,24 @@ Code repository-related API functions for Aqua library
 
 import re
 
+from .exceptions import ApiError
+from .auth import get_api_endpoint
 from .common import _request_with_retry
 
 
-def _get_supply_chain_url(server):
+def _get_supply_chain_url(server, token=None):
     """
-    Derive the Supply Chain API URL from the server/CSP endpoint
+    Derive the Supply Chain API URL from the server/CSP endpoint.
+
+    The Supply Chain API is served per region (``api.eu-1.supply-chain...``),
+    and a token issued for one region gets ``401 Unauthorized`` from another --
+    including from the region-less US host. The region is taken from, in order:
+
+      1. the console hostname, when it carries one (``xxx.eu-1.cloud.aquasec.com``);
+      2. the API endpoint this token was issued from (recorded by ``api_auth()``
+         / ``user_pass_saas_auth()``), else ``AQUA_ENDPOINT``, else the most
+         recent sign-in in this process (see ``auth.get_api_endpoint``);
+      3. none, meaning the US host.
 
     Args:
         server: The CSP server URL (e.g., https://xxx.eu-1.cloud.aquasec.com)
@@ -17,8 +29,6 @@ def _get_supply_chain_url(server):
     Returns:
         The Supply Chain API base URL
     """
-    import os
-
     # Extract the domain from the server URL
     match = re.match(r'https?://([^/]+)', server)
     if not match:
@@ -29,25 +39,16 @@ def _get_supply_chain_url(server):
     # Check if there's a region in the domain (e.g., eu-1, asia-1, etc.)
     # Pattern: xxx.REGION.cloud.aquasec.com or just xxx.cloud.aquasec.com
     region_match = re.search(r'\.(\w+-\d+)\.cloud\.aquasec\.com', domain)
-
     if region_match:
-        # Regional endpoint - extract region from CSP endpoint
-        region = region_match.group(1)
-        supply_chain_url = f"https://api.{region}.supply-chain.cloud.aquasec.com"
-    else:
-        # CSP endpoint doesn't contain region, check auth endpoint
-        auth_endpoint = os.environ.get('AQUA_ENDPOINT', '')
-        auth_region_match = re.search(r'https?://(\w+-\d+)\.api\.cloudsploit\.com', auth_endpoint)
+        return f"https://api.{region_match.group(1)}.supply-chain.cloud.aquasec.com"
 
-        if auth_region_match:
-            # Found region in auth endpoint (e.g., eu-1.api.cloudsploit.com)
-            region = auth_region_match.group(1)
-            supply_chain_url = f"https://api.{region}.supply-chain.cloud.aquasec.com"
-        else:
-            # US endpoint (no region specified in either endpoint)
-            supply_chain_url = "https://api.supply-chain.cloud.aquasec.com"
+    # Console hostname carries no region: use the endpoint that issued the token
+    auth_region_match = re.search(r'https?://(\w+-\d+)\.api\.cloudsploit\.com', get_api_endpoint(token) or '')
+    if auth_region_match:
+        return f"https://api.{auth_region_match.group(1)}.supply-chain.cloud.aquasec.com"
 
-    return supply_chain_url
+    # US endpoint (no region specified anywhere)
+    return "https://api.supply-chain.cloud.aquasec.com"
 
 
 def api_get_code_repositories_legacy(server, token, page=1, page_size=50, scope=None, use_estimated_count=False, skip_count=True, verbose=False):
@@ -148,7 +149,7 @@ def api_get_code_repositories(server, token, page=1, page_size=50, scope=None, u
         Response object from the API call
     """
     # Get the Supply Chain API base URL
-    supply_chain_url = _get_supply_chain_url(server)
+    supply_chain_url = _get_supply_chain_url(server, token)
 
     # Build the API URL with the new endpoint
     api_url = f"{supply_chain_url}/v2/build/repositories"
@@ -195,7 +196,7 @@ def get_all_code_repositories(server, token, scope=None, verbose=False):
                                        use_estimated_count=False, skip_count=False, verbose=verbose)
         
         if res.status_code != 200:
-            raise Exception(f"API call failed with status {res.status_code}: {res.text}")
+            raise ApiError(f"API call failed with status {res.status_code}: {res.text}", status_code=res.status_code, response_text=res.text)
         
         data = res.json()
         repos = data.get("data", [])
@@ -239,7 +240,7 @@ def get_code_repo_count(server, token, scope=None, verbose=False):
                                    use_estimated_count=False, skip_count=False, verbose=verbose)
     
     if res.status_code != 200:
-        raise Exception(f"API call failed with status {res.status_code}: {res.text}")
+        raise ApiError(f"API call failed with status {res.status_code}: {res.text}", status_code=res.status_code, response_text=res.text)
     
     # The Supply Chain API returns total_count instead of count
     return res.json().get("total_count", 0)
@@ -270,7 +271,7 @@ def _get_code_repo_count_legacy_with_deduplication(server, token, scope=None, ve
         if res.status_code != 200:
             if verbose:
                 print(f"Legacy API call failed with status {res.status_code}: {res.text}")
-            raise Exception(f"Legacy API call failed with status {res.status_code}: {res.text}")
+            raise ApiError(f"Legacy API call failed with status {res.status_code}: {res.text}", status_code=res.status_code, response_text=res.text)
 
         data = res.json()
         repos = data.get("result", [])  # Hub Inventory API uses "result" not "data"
