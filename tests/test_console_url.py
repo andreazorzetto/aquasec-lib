@@ -230,15 +230,15 @@ class TestAuthenticateGating:
         """
         Relaxing one requirement must not relax the rest.
 
-        Incomplete credentials exit rather than returning — authenticate() is
-        the entry point of CLI tools and treats this as fatal, which is why the
-        old CSP_ENDPOINT gate was so costly: a complete set of API keys took
-        this branch and the process died telling you they were missing.
+        Incomplete credentials raise rather than returning a token, which is
+        why the old CSP_ENDPOINT gate was so costly: a complete set of API keys
+        took this branch and the caller was told they were missing.
         """
         import pytest
         from aquasec import auth as auth_mod
+        from aquasec.exceptions import MissingCredentialsError
         partial = dict(self.KEYS)
         partial.pop("AQUA_ROLE")
         with patch.dict(os.environ, partial, clear=True):
-            with pytest.raises(SystemExit):
+            with pytest.raises(MissingCredentialsError):
                 auth_mod.authenticate()

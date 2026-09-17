@@ -52,6 +52,53 @@ all_licenses = get_all_licenses(os.environ['CSP_ENDPOINT'], token)
 print(all_licenses)
 ```
 
+### Bringing your own credentials
+
+`authenticate()` reads `AQUA_*` from the environment. If your keys live in a
+secrets manager and you would rather not export them, sign in with `api_auth()`
+directly and register the same function as the token provider, so an expired
+token can be refreshed without the environment:
+
+```python
+from aquasec import api_auth, set_token_provider, get_code_repo_count
+
+def fresh_token():
+    key, secret = vault.read("aqua")          # however you fetch them
+    return api_auth(key, secret,
+                    "https://eu-1.api.cloudsploit.com",   # regional API endpoint
+                    "api_admin_role",
+                    '["ANY:*"]')                         # JSON list of METHOD:path
+
+set_token_provider(fresh_token)
+token = fresh_token()
+
+# `server` is the console URL, not the API endpoint above
+count = get_code_repo_count("https://<tenant>.cloud.aquasec.com", token)
+```
+
+`api_auth()` also remembers which regional endpoint issued the token, so
+region-specific services (the Supply Chain API, exports) are addressed
+correctly without `AQUA_ENDPOINT` being set.
+
+On a `401` the library calls the provider, retries once, and remembers the new
+token for that stale one. With no provider registered it falls back to
+`authenticate()` only when a complete set of `AQUA_*` variables is present;
+otherwise the `401` response is returned to you unchanged.
+
+### Errors
+
+The library never calls `sys.exit()`. Failures are raised as subclasses of
+`aquasec.AquaError`:
+
+| Exception | Raised when |
+|---|---|
+| `MissingCredentialsError` | `authenticate()` finds no complete set of `AQUA_*` variables |
+| `AuthenticationError` | the platform rejects the credentials (`.status_code`, `.response_text`) |
+| `ApiError` | an API call returns a status the library cannot handle (`.status_code`, `.response_text`) |
+
+`MissingCredentialsError` is an `AuthenticationError`, and both are `AquaError`s,
+so `except AquaError` catches anything the library raises deliberately.
+
 ## Library Structure
 
 ```
@@ -62,6 +109,7 @@ aquasec/
 ├── licenses.py         # License-related API calls
 ├── scopes.py          # Application scope functions
 ├── enforcers.py       # Enforcer counts + capability reporting (v0.12.0)
+├── exceptions.py     # AquaError hierarchy; the library raises, never exits (v0.13.0)
 ├── repositories.py    # Repository API calls
 ├── code_repositories.py # Code repository API calls
 ├── functions.py       # Serverless functions API calls (NEW in v0.4.0)

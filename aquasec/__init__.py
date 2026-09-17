@@ -5,7 +5,7 @@ This library provides a clean API interface for interacting with Aqua Security's
 platform, extracted from the andreactl tool.
 """
 
-__version__ = "0.12.1"
+__version__ = "0.13.0"
 
 from .auth import (
     authenticate,
@@ -157,7 +157,17 @@ from .containers import (
     container_key
 )
 
+from .exceptions import (
+    AquaError,
+    AuthenticationError,
+    MissingCredentialsError,
+    ApiError,
+)
+
 from .common import (
+    set_token_provider,
+    get_token_provider,
+    clear_token_cache,
     write_content_to_file,
     write_json_to_file,
     generate_csv_for_license_breakdown,
@@ -184,6 +194,14 @@ from .config import (
 )
 
 __all__ = [
+    # Exceptions and token refresh
+    'AquaError',
+    'AuthenticationError',
+    'MissingCredentialsError',
+    'ApiError',
+    'set_token_provider',
+    'get_token_provider',
+    'clear_token_cache',
     # Auth
     'authenticate',
     'api_auth',

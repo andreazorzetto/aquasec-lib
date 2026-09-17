@@ -8,8 +8,76 @@ import requests
 from os.path import exists
 from urllib.parse import urlparse
 
-# Module-level token cache for re-authentication
-_cached_token = None
+# How an expired token gets replaced, in order of preference:
+#
+#   1. a provider registered with set_token_provider() -- for applications that
+#      hold their own credentials (secrets manager, vault) and sign in with
+#      api_auth() rather than through AQUA_* environment variables;
+#   2. authenticate(), when a complete set of AQUA_* variables is present;
+#   3. nothing -- the 401 is returned to the caller.
+#
+# _refreshed maps the token a caller keeps passing in to the fresh one obtained
+# for it, so a refresh is only ever applied to the token it replaced. A single
+# global "cached token" would silently override whatever token a caller passed,
+# which is exactly wrong for a process that juggles more than one.
+_token_provider = None
+_refreshed = {}
+
+
+def set_token_provider(provider):
+    """
+    Register a zero-argument callable that returns a fresh bearer token.
+
+    Called by ``_request_with_retry`` when a request comes back 401. Use this
+    when the credentials are not in the environment::
+
+        from aquasec import api_auth, set_token_provider
+
+        def fresh_token():
+            key, secret = vault.read("aqua")
+            return api_auth(key, secret, endpoint, role, '["ANY:*"]')
+
+        set_token_provider(fresh_token)
+        token = fresh_token()
+
+    Pass ``None`` to unregister.
+    """
+    global _token_provider
+    if provider is not None and not callable(provider):
+        raise TypeError("token provider must be callable or None")
+    _token_provider = provider
+    _refreshed.clear()
+
+
+def get_token_provider():
+    """Return the registered token provider, or None."""
+    return _token_provider
+
+
+def _refresh_token(verbose=False):
+    """
+    Obtain a replacement token, or return None if there is no way to.
+
+    Never raises for the *absence* of a way to refresh -- that is an ordinary
+    outcome and the caller gets its 401 back. A provider or ``authenticate()``
+    that fails while trying does raise, since that is a real error.
+    """
+    if _token_provider is not None:
+        if verbose:
+            print("Token rejected (401). Refreshing via the registered token provider...")
+        return _token_provider()
+
+    from .auth import authenticate, env_credentials_present
+    if env_credentials_present():
+        if verbose:
+            print("Token rejected (401). Re-authenticating from environment credentials...")
+        return authenticate(verbose=verbose)
+
+    if verbose:
+        print("Token rejected (401) and no way to refresh it: no token provider is "
+              "registered and no AQUA_* credentials are in the environment. "
+              "Returning the 401 to the caller.")
+    return None
 
 
 def normalize_console_url(url):
@@ -169,7 +237,10 @@ def _request_with_retry(method, url, token, headers=None, verbose=False, **kwarg
     Make HTTP request with automatic re-authentication on 401.
 
     All API functions should use this instead of calling requests directly.
-    This ensures automatic token refresh on 401 responses.
+    On a 401 the token is refreshed through the registered token provider, or
+    through ``authenticate()`` when ``AQUA_*`` credentials are present, and the
+    request is retried once. If neither is available the 401 response is
+    returned as-is for the caller to handle; the library never exits.
 
     Args:
         method: HTTP method ('GET', 'POST', 'DELETE', etc.)
@@ -182,10 +253,8 @@ def _request_with_retry(method, url, token, headers=None, verbose=False, **kwarg
     Returns:
         Response object from the API call
     """
-    global _cached_token
-
-    # Use cached token if available (from a previous re-auth)
-    effective_token = _cached_token if _cached_token else token
+    # A refresh obtained earlier for this exact token supersedes it.
+    effective_token = _refreshed.get(token, token)
 
     # Build headers
     if headers is None:
@@ -198,14 +267,13 @@ def _request_with_retry(method, url, token, headers=None, verbose=False, **kwarg
     # Make the request
     res = requests.request(method, url, headers=headers, **kwargs)
 
-    # Handle 401 - token expired
+    # Handle 401 - token expired (or otherwise rejected)
     if res.status_code == 401:
-        if verbose:
-            print("Token expired. Re-authenticating...")
+        new_token = _refresh_token(verbose=verbose)
+        if new_token is None:
+            return res
 
-        from .auth import authenticate
-        new_token = authenticate(verbose=verbose)
-        _cached_token = new_token
+        _refreshed[token] = new_token
 
         # Update header and retry
         headers['Authorization'] = f'Bearer {new_token}'
@@ -218,9 +286,8 @@ def _request_with_retry(method, url, token, headers=None, verbose=False, **kwarg
 
 
 def clear_token_cache():
-    """Clear the cached token. Useful for testing or forcing re-auth."""
-    global _cached_token
-    _cached_token = None
+    """Forget every refreshed token. Useful for testing or forcing re-auth."""
+    _refreshed.clear()
 
 
 def write_content_to_file(file, content):

@@ -64,7 +64,7 @@ against a real destination before designing an ingestion pipeline around it.
 
 import os
 
-from .auth import decode_token_claims
+from .auth import decode_token_claims, get_api_endpoint
 from .common import _request_with_retry
 
 # Aqua's regional API prefixes map to AWS-style region names, which is what the
@@ -100,7 +100,8 @@ def resolve_region(token=None, verbose=False):
 
     ``AQUA_REGION`` wins when set, so an operator can always override. Otherwise
     the region is read from the token's ``cspm_url`` claim, falling back to
-    ``AQUA_ENDPOINT``. Both carry the regional prefix (``eu-1``, ``asia-1``,
+    the API endpoint the token was issued from (recorded by ``api_auth()``,
+    else ``AQUA_ENDPOINT``). Both carry the regional prefix (``eu-1``, ``asia-1``,
     ``ap-2``, or none for the US), which maps to the region name the export
     service uses in its hostname.
 
@@ -128,9 +129,9 @@ def resolve_region(token=None, verbose=False):
                 print(f"Region detected from token: {region}")
             return region
 
-    region = _region_from_url(os.environ.get('AQUA_ENDPOINT'))
+    region = _region_from_url(get_api_endpoint())
     if region and verbose:
-        print(f"Region detected from AQUA_ENDPOINT: {region}")
+        print(f"Region detected from API endpoint: {region}")
     return region
 
 

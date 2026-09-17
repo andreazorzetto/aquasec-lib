@@ -2,8 +2,8 @@
 Enforcer-related API functions for Aqua library
 """
 
-import sys
 
+from .exceptions import ApiError
 from .common import _request_with_retry
 
 
@@ -51,10 +51,8 @@ def get_enforcers_from_group(server, token, group=None, page_index=1, page_size=
             else:
                 break
         else:
-            print("Requested terminated with error %d" % res.status_code)
-            if verbose: 
-                print(res.json())
-            sys.exit(1)
+            raise ApiError("Request terminated with error %d" % res.status_code,
+                           status_code=res.status_code, response_text=res.text)
 
     return enforcers
 
@@ -84,10 +82,8 @@ def get_enforcer_groups(server, token, scope=None, page_index=1, page_size=100, 
             else:
                 break
         else:
-            print("Requested terminated with error %d" % res.status_code)
-            if verbose: 
-                print(res.json())
-            sys.exit(1)
+            raise ApiError("Request terminated with error %d" % res.status_code,
+                           status_code=res.status_code, response_text=res.text)
 
     return enforcer_groups
 
@@ -306,9 +302,7 @@ def get_all_enforcer_groups(server, token, verbose=False):
     """Fetch every enforcer group as a list (one paged sweep of /hostsbatch).
 
     Raises on a non-200 instead of exiting the process, so a caller that emits
-    structured output can report the failure in its own format. ``get_enforcer_groups``
-    predates that convention and calls ``sys.exit()`` directly, which a caller cannot
-    intercept with ``except Exception``.
+    structured output can report the failure in its own format.
     """
     groups = []
     page = 1
