@@ -103,7 +103,7 @@ python aqua_global_scope_extract.py extract -d
 | `-p NAME` | Use a specific credential profile |
 | `--repos-only` / `--containers-only` | Limit the scan |
 | `--json-file [PATH]` | Full result as JSON |
-| `--csv-dir [DIR]` | `unscoped_repositories.csv` + `unscoped_containers.csv` |
+| `--csv-dir [DIR]` | `unscoped_repositories.csv` + `unscoped_containers.csv`, plus `unverified_scopes.csv` if any scope could not be checked |
 | `--xlsx [PATH]` | Excel workbook |
 | `--dashboard [PATH]` | Self-contained HTML dashboard |
 | `--output-dir DIR` | Where reports go (default `output_<timestamp>`) |

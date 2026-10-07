@@ -256,3 +256,29 @@ def test_analyze_has_no_failed_scopes_key_when_nothing_failed():
          patch.object(gse, 'get_all_containers', side_effect=_containers):
         result = gse.analyze("s", "t", include_repos=True, include_containers=True)
     assert "failed_scopes" not in result
+
+
+def test_csv_lists_scopes_that_could_not_be_verified(tmp_path):
+    """Someone who only opens the CSVs must still see what was not checked."""
+    result = {
+        "unscoped_repositories": [{"name": "payments", "registry": "r"}],
+        "failed_scopes": [{"scope": "Broken", "error": "HTTP 500 - sql: no rows"}],
+    }
+    written = gse.write_csv_files(result, str(tmp_path))
+
+    path = tmp_path / "unverified_scopes.csv"
+    assert str(path) in written
+    with open(path, newline="") as f:
+        rows = list(csv.DictReader(f))
+    assert rows == [{
+        "scope": "Broken",
+        "status": "not verified",
+        "note": rows[0]["note"],
+        "error": "HTTP 500 - sql: no rows",
+    }]
+    assert "could contain assets" in rows[0]["note"]
+
+
+def test_no_unverified_scopes_file_when_everything_was_checked(tmp_path):
+    gse.write_csv_files({"unscoped_repositories": []}, str(tmp_path))
+    assert not (tmp_path / "unverified_scopes.csv").exists()

@@ -433,6 +433,26 @@ def write_csv_files(result, csv_dir):
                             c["namespace_name"], c["host_name"], c["status"], c["risk_level"]])
         written.append(path)
 
+    # Scopes the API listed but could not resolve. Their repositories and
+    # containers could not be subtracted, so any they hold are in the unscoped
+    # files above -- say so next to those files, not only in the table output.
+    failed = result.get("failed_scopes") or []
+    if failed:
+        path = os.path.join(csv_dir, "unverified_scopes.csv")
+        with open(path, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["scope", "status", "note", "error"])
+            for item in failed:
+                w.writerow([
+                    item["scope"],
+                    "not verified",
+                    "This scope could contain assets, but it could not be checked. "
+                    "Anything it contains appears in the unscoped files as if it "
+                    "belonged to no scope.",
+                    item.get("error", ""),
+                ])
+        written.append(path)
+
     return written
 
 

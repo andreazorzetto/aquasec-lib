@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Unchanged
 - TLS verification remains **off by default**, as before, for compatibility with every existing utility
 
+### Fixed
+- **global-scope-extract**: one application scope that the API lists but cannot resolve (HTTP 500 `failed getting scope X: sql: no rows in result set`) no longer aborts the whole sweep. The scope is skipped and reported under `failed_scopes` in the JSON result and in the table output
+- **global-scope-extract**: such scopes are also written to `unverified_scopes.csv` alongside the other CSVs, marked "not verified". Their repositories and containers could not be subtracted, so any they hold appear in the unscoped files; the CSV now says so instead of leaving a reader to treat them as genuinely unscoped
+
 ## [0.13.0] - 2026-09-17
 
 ### Added
