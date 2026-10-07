@@ -45,6 +45,7 @@ from aquasec import (
     profile_not_found_response,
     profile_operation_response,
 )
+from aquasec.exceptions import ApiError
 
 # Version
 __version__ = "0.1.0"
@@ -198,34 +199,48 @@ def collect_scope_coverage(server, token, app_scopes, repo_index=None, cont_inde
     repo_index = repo_index or {}
     cont_index = cont_index or {}
 
+    failed_scopes = []
+
     for i, scope in enumerate(app_scopes, 1):
         entry = {"scope": scope, "repos": 0, "containers": 0, "repo_ids": [], "cont_ids": []}
-        if include_repos:
-            repos = get_all_repositories(server, token, scope=scope, verbose=debug)
-            ids = []
-            for r in repos:
-                k = repo_key(r)
-                scoped_repo_keys.add(k)
-                if k in repo_index:
-                    ids.append(repo_index[k])
-            entry["repos"] = len(repos)
-            entry["repo_ids"] = sorted(set(ids))
-        if include_containers:
-            containers = get_all_containers(server, token, scope=scope, verbose=debug)
-            ids = []
-            for c in containers:
-                k = container_key(c)
-                scoped_container_keys.add(k)
-                if k in cont_index:
-                    ids.append(cont_index[k])
-            entry["containers"] = len(containers)
-            entry["cont_ids"] = sorted(set(ids))
+        try:
+            if include_repos:
+                repos = get_all_repositories(server, token, scope=scope, verbose=debug)
+                ids = []
+                for r in repos:
+                    k = repo_key(r)
+                    scoped_repo_keys.add(k)
+                    if k in repo_index:
+                        ids.append(repo_index[k])
+                entry["repos"] = len(repos)
+                entry["repo_ids"] = sorted(set(ids))
+            if include_containers:
+                containers = get_all_containers(server, token, scope=scope, verbose=debug)
+                ids = []
+                for c in containers:
+                    k = container_key(c)
+                    scoped_container_keys.add(k)
+                    if k in cont_index:
+                        ids.append(cont_index[k])
+                entry["containers"] = len(containers)
+                entry["cont_ids"] = sorted(set(ids))
+        except ApiError as e:
+            # A scope the scopes API lists but the backend cannot resolve (seen as
+            # a 500 "failed getting scope X: sql: no rows in result set") would
+            # otherwise abort the whole sweep. Skip it and report it instead --
+            # its members, if any, are then counted as Global-only.
+            entry["error"] = str(e)
+            failed_scopes.append({"scope": scope, "error": str(e)})
+            if verbose:
+                print(f"  scope {i}/{n}: {scope} -- SKIPPED ({e})")
+            coverage.append(entry)
+            continue
         coverage.append(entry)
         if verbose:
             print(f"  scope {i}/{n}: {scope} "
                   f"(repos={entry['repos']}, containers={entry['containers']})")
 
-    return scoped_repo_keys, scoped_container_keys, coverage
+    return scoped_repo_keys, scoped_container_keys, coverage, failed_scopes
 
 
 def analyze(server, token, include_repos=True, include_containers=True,
@@ -273,7 +288,7 @@ def analyze(server, token, include_repos=True, include_containers=True,
         result["all_containers"] = master_containers
 
     # One pass over the scopes: union keys for the delta + per-scope membership.
-    scoped_repo_keys, scoped_container_keys, coverage = collect_scope_coverage(
+    scoped_repo_keys, scoped_container_keys, coverage, failed_scopes = collect_scope_coverage(
         server, token, app_scopes, repo_index, cont_index,
         include_repos, include_containers, verbose, debug)
 
@@ -310,6 +325,8 @@ def analyze(server, token, include_repos=True, include_containers=True,
         "cont_ids": unscoped_cont_ids,
     }
     result["scope_coverage"] = [unscoped_entry] + coverage
+    if failed_scopes:
+        result["failed_scopes"] = failed_scopes
 
     return result
 
@@ -322,6 +339,11 @@ def print_tables(result):
     """Human-readable rendering of the analysis result."""
     print("\n=== Global-Only (Unscoped) Inventory ===\n")
     print(f"Application scopes analyzed: {result['application_scope_count']}")
+    failed = result.get("failed_scopes") or []
+    if failed:
+        print(f"Scopes skipped (API error): {len(failed)} -- "
+              f"{', '.join(f['scope'] for f in failed)}")
+        print("  Their members, if any, are counted as Global-only below.")
 
     summary = result["summary"]
     stbl = PrettyTable()
