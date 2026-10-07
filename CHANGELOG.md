@@ -5,6 +5,11 @@ All notable changes to the aquasec library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.1] - 2026-10-07
+
+### Fixed
+- **Sign-in ignored `set_request_defaults(verify=...)`.** The three sign-in functions made their own HTTP calls: `user_pass_saas_auth()` and `user_pass_onprem_auth()` with verification hardcoded off, `api_auth()` with the system trust store and no way to supply a CA bundle. So a caller that configured a CA bundle got verified API calls but an unverified login -- the one call that carries the password, and on-prem the one most likely to sit behind an internal CA. Sign-in now honours the setting **when one has been chosen explicitly** with `set_request_defaults(verify=...)`. When nothing was chosen, each function keeps exactly its previous behaviour, so existing utilities are unaffected
+
 ## [0.14.0] - 2026-10-07
 
 ### Added
