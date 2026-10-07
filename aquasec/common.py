@@ -9,7 +9,7 @@ import threading
 import time
 import requests
 from os.path import exists
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 # How an expired token gets replaced, in order of preference:
 #
@@ -34,6 +34,110 @@ REFRESH_BACKOFF_SECONDS = 60
 
 # Per-token maps must not grow for the lifetime of a long-running process.
 _TOKEN_MAP_MAX = 64
+
+# Defaults applied to every request made through _request_with_retry unless the
+# call passes its own value.
+#
+# TLS verification stays off by default for backward compatibility: every
+# utility built on this library has relied on that. An application that can name
+# a CA bundle should call set_request_defaults(verify="/path/to/ca.pem") -- an
+# on-prem console behind an internal CA is exactly where a verified chain is
+# worth having, and an air-gapped network does not make an unverified one safe.
+_REQUEST_DEFAULTS_INITIAL = {"verify": False}
+_request_defaults = dict(_REQUEST_DEFAULTS_INITIAL)
+
+# Timeout used by API functions that take a ``timeout`` argument and were not
+# given one, when no library-wide default has been set. Without a timeout a
+# stalled connection blocks forever, which in a CI job or a Kubernetes hook means
+# a pipeline that never finishes rather than one that fails.
+DEFAULT_API_TIMEOUT = 30
+
+_UNSET = object()
+
+
+def set_request_defaults(verify=_UNSET, timeout=_UNSET):
+    """Set library-wide defaults for TLS verification and request timeout.
+
+    Args:
+        verify: ``True`` to verify against the system trust store, a path to a
+            CA bundle, or ``False`` to disable verification (the default).
+        timeout: Seconds, or a ``(connect, read)`` tuple. ``None`` removes a
+            previously set default.
+
+    A value passed explicitly to an individual call always wins.
+    """
+    if verify is not _UNSET:
+        _request_defaults["verify"] = verify
+    if timeout is not _UNSET:
+        if timeout is None:
+            _request_defaults.pop("timeout", None)
+        else:
+            _request_defaults["timeout"] = timeout
+
+
+def get_request_defaults():
+    """The current library-wide request defaults (a copy)."""
+    return dict(_request_defaults)
+
+
+def reset_request_defaults():
+    """Restore the original request defaults. Mainly for tests."""
+    _request_defaults.clear()
+    _request_defaults.update(_REQUEST_DEFAULTS_INITIAL)
+
+
+# Whether credential-bearing fields (enforcer registration tokens and the
+# install commands that embed them) may appear in output the library produces
+# itself: error messages and verbose printing. Off by default, because that
+# output tends to land in CI and hook logs that are kept, shared and shipped.
+# The data itself is never withheld -- functions return complete objects either
+# way -- this only governs what the library writes out on its own.
+_show_secrets = False
+
+
+def set_show_secrets(show):
+    """Allow (True) or redact (False, the default) secrets in library output.
+
+    Affects error messages, ``ApiError.response_text`` and verbose output. Turn
+    it on for interactive debugging; leave it off anywhere output is logged.
+    """
+    global _show_secrets
+    _show_secrets = bool(show)
+
+
+def get_show_secrets():
+    """Whether secrets may currently appear in library output."""
+    return _show_secrets
+
+
+def resolve_timeout(timeout=None):
+    """The timeout an API call should use: explicit, then library default, then 30s."""
+    if timeout is not None:
+        return timeout
+    return _request_defaults.get("timeout", DEFAULT_API_TIMEOUT)
+
+
+def path_segment(value):
+    """Encode one URL path segment. Aqua names may contain spaces and slashes."""
+    return quote(str(value), safe="")
+
+
+def response_json(res):
+    """The parsed JSON body, or None when there is none (e.g. 204) or it is not JSON."""
+    if res.status_code == 204 or not (res.text or "").strip():
+        return None
+    try:
+        return res.json()
+    except ValueError:
+        return None
+
+
+def server_message(res):
+    """Aqua's error message from a response body, falling back to the raw text."""
+    body = response_json(res)
+    if isinstance(body, dict) and body.get("message"):
+        return str(body["message"])
+    return (res.text or "").strip()[:500]
 
 
 def _jwt_exp(token):
@@ -299,8 +403,9 @@ def _request_with_retry(method, url, token, headers=None, verbose=False, **kwarg
         headers = {}
     headers['Authorization'] = f'Bearer {effective_token}'
 
-    # Ensure verify=False is set (can be overridden in kwargs)
-    kwargs.setdefault('verify', False)
+    # Library-wide defaults (TLS verification, timeout); explicit kwargs win.
+    for key, value in _request_defaults.items():
+        kwargs.setdefault(key, value)
 
     # Make the request
     res = requests.request(method, url, headers=headers, **kwargs)

@@ -5,7 +5,7 @@ This library provides a clean API interface for interacting with Aqua Security's
 platform, extracted from the andreactl tool.
 """
 
-__version__ = "0.13.0"
+__version__ = "0.14.0"
 
 from .auth import (
     authenticate,
@@ -46,7 +46,46 @@ from .enforcers import (
     CAPABILITIES,
     AMP_CAPABLE_TYPES,
     SENSITIVE_GROUP_FIELDS,
-    GROUP_EXPORT_FIELDS
+    GROUP_EXPORT_FIELDS,
+    ENFORCER_GROUPS_PATH,
+    split_enforcer_group_secrets,
+    api_get_enforcer_group,
+    api_create_enforcer_group,
+    api_update_enforcer_group,
+    api_delete_enforcer_group,
+    get_enforcer_group,
+    create_enforcer_group,
+    update_enforcer_group,
+    delete_enforcer_group
+)
+
+from .runtime_policies import (
+    RUNTIME_POLICIES_PATH,
+    api_get_runtime_policies,
+    api_get_runtime_policy,
+    api_create_runtime_policy,
+    api_update_runtime_policy,
+    api_delete_runtime_policy,
+    get_runtime_policy,
+    get_all_runtime_policies,
+    create_runtime_policy,
+    update_runtime_policy,
+    delete_runtime_policy
+)
+
+from .assurance_policies import (
+    ASSURANCE_POLICY_PATH,
+    ASSURANCE_TYPES,
+    api_get_assurance_policies,
+    api_get_assurance_policy,
+    api_create_assurance_policy,
+    api_update_assurance_policy,
+    api_delete_assurance_policy,
+    get_assurance_policy,
+    get_all_assurance_policies,
+    create_assurance_policy,
+    update_assurance_policy,
+    delete_assurance_policy
 )
 
 from .repositories import (
@@ -174,7 +213,13 @@ from .common import (
     normalize_console_url,
     validate_console_url,
     get_console_url,
-    resolve_console_url
+    resolve_console_url,
+    set_request_defaults,
+    get_request_defaults,
+    reset_request_defaults,
+    set_show_secrets,
+    get_show_secrets,
+    DEFAULT_API_TIMEOUT
 )
 
 from .config import (
@@ -241,6 +286,43 @@ __all__ = [
     'AMP_CAPABLE_TYPES',
     'SENSITIVE_GROUP_FIELDS',
     'GROUP_EXPORT_FIELDS',
+    'ENFORCER_GROUPS_PATH',
+    'split_enforcer_group_secrets',
+    'api_get_enforcer_group',
+    'api_create_enforcer_group',
+    'api_update_enforcer_group',
+    'api_delete_enforcer_group',
+    'get_enforcer_group',
+    'create_enforcer_group',
+    'update_enforcer_group',
+    'delete_enforcer_group',
+
+    # Runtime policies (CRUD)
+    'RUNTIME_POLICIES_PATH',
+    'api_get_runtime_policies',
+    'api_get_runtime_policy',
+    'api_create_runtime_policy',
+    'api_update_runtime_policy',
+    'api_delete_runtime_policy',
+    'get_runtime_policy',
+    'get_all_runtime_policies',
+    'create_runtime_policy',
+    'update_runtime_policy',
+    'delete_runtime_policy',
+
+    # Assurance policies (CRUD)
+    'ASSURANCE_POLICY_PATH',
+    'ASSURANCE_TYPES',
+    'api_get_assurance_policies',
+    'api_get_assurance_policy',
+    'api_create_assurance_policy',
+    'api_update_assurance_policy',
+    'api_delete_assurance_policy',
+    'get_assurance_policy',
+    'get_all_assurance_policies',
+    'create_assurance_policy',
+    'update_assurance_policy',
+    'delete_assurance_policy',
     
     # Repositories
     'api_get_repositories',
@@ -349,6 +431,12 @@ __all__ = [
     'validate_console_url',
     'get_console_url',
     'resolve_console_url',
+    'set_request_defaults',
+    'get_request_defaults',
+    'reset_request_defaults',
+    'set_show_secrets',
+    'get_show_secrets',
+    'DEFAULT_API_TIMEOUT',
     
     # Configuration management
     'ConfigManager',

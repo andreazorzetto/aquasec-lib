@@ -7,6 +7,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import aqua_global_scope_extract as gse
+from aquasec.exceptions import ApiError
 
 
 # --- Pure helpers -----------------------------------------------------------
@@ -204,3 +205,80 @@ def test_analyze_repos_only():
     assert "repositories" in result["summary"]
     assert "containers" not in result["summary"]
     assert "unscoped_containers" not in result
+
+
+# --- A scope the API lists but cannot resolve -------------------------------
+
+def _repos_with_broken_scope(server=None, token=None, scope=None, **kwargs):
+    if scope == "Broken":
+        raise ApiError(
+            'API call failed with status 500: {"message":"failed getting scope '
+            'Broken: sql: no rows in result set"}',
+            status_code=500,
+        )
+    return _repos(server, token, scope, **kwargs)
+
+
+def test_analyze_skips_a_scope_the_backend_cannot_resolve(capsys):
+    """One unresolvable scope must not abort the sweep.
+
+    Seen in the field as a 500 "sql: no rows in result set" for a scope the
+    scopes API still lists. The remaining scopes are analysed, the broken one
+    is reported, and the table output says its members count as Global-only.
+    """
+    scopes = [{"name": "Global"}, {"name": "Broken"}, {"name": "TeamA"}]
+    with patch.object(gse, 'get_app_scopes', return_value=scopes), \
+         patch.object(gse, 'get_all_repositories', side_effect=_repos_with_broken_scope), \
+         patch.object(gse, 'get_all_containers', side_effect=_containers):
+        result = gse.analyze("s", "t", include_repos=True, include_containers=True)
+
+    # The sweep finished and TeamA was still analysed after the failure.
+    assert result["summary"]["repositories"]["scoped"] == 1
+    team_a = next(c for c in result["scope_coverage"] if c.get("scope") == "TeamA")
+    assert team_a["repos"] == 1
+
+    # The failure is reported, both at the top level and on the scope's entry.
+    assert [f["scope"] for f in result["failed_scopes"]] == ["Broken"]
+    assert "sql: no rows" in result["failed_scopes"][0]["error"]
+    broken = next(c for c in result["scope_coverage"] if c.get("scope") == "Broken")
+    assert "error" in broken
+
+    gse.print_tables(result)
+    out = capsys.readouterr().out
+    assert "Scopes skipped (API error): 1 -- Broken" in out
+    assert "counted as Global-only" in out
+
+
+def test_analyze_has_no_failed_scopes_key_when_nothing_failed():
+    """The key only appears when something was skipped."""
+    with patch.object(gse, 'get_app_scopes', return_value=[{"name": "Global"}, {"name": "TeamA"}]), \
+         patch.object(gse, 'get_all_repositories', side_effect=_repos), \
+         patch.object(gse, 'get_all_containers', side_effect=_containers):
+        result = gse.analyze("s", "t", include_repos=True, include_containers=True)
+    assert "failed_scopes" not in result
+
+
+def test_csv_lists_scopes_that_could_not_be_verified(tmp_path):
+    """Someone who only opens the CSVs must still see what was not checked."""
+    result = {
+        "unscoped_repositories": [{"name": "payments", "registry": "r"}],
+        "failed_scopes": [{"scope": "Broken", "error": "HTTP 500 - sql: no rows"}],
+    }
+    written = gse.write_csv_files(result, str(tmp_path))
+
+    path = tmp_path / "unverified_scopes.csv"
+    assert str(path) in written
+    with open(path, newline="") as f:
+        rows = list(csv.DictReader(f))
+    assert rows == [{
+        "scope": "Broken",
+        "status": "not verified",
+        "note": rows[0]["note"],
+        "error": "HTTP 500 - sql: no rows",
+    }]
+    assert "could contain assets" in rows[0]["note"]
+
+
+def test_no_unverified_scopes_file_when_everything_was_checked(tmp_path):
+    gse.write_csv_files({"unscoped_repositories": []}, str(tmp_path))
+    assert not (tmp_path / "unverified_scopes.csv").exists()

@@ -10,15 +10,21 @@ test resolves the Supply Chain or export region.
 import pytest
 
 from aquasec import auth as auth_mod
-from aquasec.common import set_token_provider, clear_token_cache
+from aquasec.common import (
+    set_token_provider, clear_token_cache, reset_request_defaults, set_show_secrets,
+)
 
 
 @pytest.fixture(autouse=True)
 def _reset_library_state():
     set_token_provider(None)
     clear_token_cache()
+    reset_request_defaults()
+    set_show_secrets(False)
     auth_mod.set_api_endpoint(None)
     yield
     set_token_provider(None)
     clear_token_cache()
     auth_mod.set_api_endpoint(None)
+    reset_request_defaults()
+    set_show_secrets(False)

@@ -113,6 +113,8 @@ aquasec/
 ├── scopes.py          # Application scope functions
 ├── enforcers.py       # Enforcer counts + capability reporting (v0.12.0)
 ├── exceptions.py     # AquaError hierarchy; the library raises, never exits (v0.13.0)
+├── runtime_policies.py   # Runtime policy CRUD, by name (v0.14.0)
+├── assurance_policies.py # Assurance policy CRUD, by type and name (v0.14.0)
 ├── repositories.py    # Repository API calls
 ├── code_repositories.py # Code repository API calls
 ├── functions.py       # Serverless functions API calls (NEW in v0.4.0)
