@@ -5,6 +5,26 @@ All notable changes to the aquasec library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-10-07
+
+### Added
+- **`runtime_policies.py`**: create, read, update and delete runtime policies (`/api/v2/runtime_policies/{name}`). `get_runtime_policy()` returns `None` for a missing policy, `get_all_runtime_policies()` pages through the list, and `delete_runtime_policy(missing_ok=True)` tolerates a policy that is already gone. Raw `api_*` variants return the unmodified response
+- **`assurance_policies.py`**: the same for assurance policies, addressed by type and name (`/api/v2/assurance_policy/{type}/{name}`). The type is checked against `ASSURANCE_TYPES` (`image`, `host`, `function`, `kubernetes`) before any request is made
+- **Enforcer group CRUD** in `enforcers.py`: `get_enforcer_group()`, `create_enforcer_group()`, `update_enforcer_group()`, `delete_enforcer_group()` and their `api_*` forms, keyed by the group `id` (which is not the same field as `logicalname`). `split_enforcer_group_secrets()` separates settings from the credential-bearing fields
+- **`set_request_defaults(verify=..., timeout=...)`** with `get_request_defaults()` / `reset_request_defaults()`: library-wide TLS verification (a CA bundle path, for on-prem consoles behind an internal CA) and timeout, applied by `_request_with_retry` unless a call passes its own. `DEFAULT_API_TIMEOUT` (30s) applies to every new function, so a stalled connection fails instead of hanging a CI job forever
+
+### Security
+- **Enforcer group reads return the registration token** -- from the list and from a single get, not only on create. Nothing in the new enforcer group functions prints a request or response body, even with `verbose=True`; error messages and `ApiError.response_text` are built from a redacted copy, and a non-JSON error body is not echoed at all. `update_enforcer_group()` strips the token fields from the request body by default
+- `delete_enforcer_group()` does **not** delete the group's enforcers unless `delete_related=True` is passed. Aqua's API deletes "the group and its related Enforcers" when asked to; that is now an explicit choice
+
+### Verified against a live tenant
+- Runtime policy update is a **full replace**: a partial body resets every field it leaves out. Send the complete object
+- Create accepts a sparse body and returns the complete object; the default `application_scopes` is `["Global"]`
+- Enforcer groups can be created without gateways (Aqua assigns one), and an update without the token fields leaves the token unchanged
+
+### Unchanged
+- TLS verification remains **off by default**, as before, for compatibility with every existing utility
+
 ## [0.13.0] - 2026-09-17
 
 ### Added

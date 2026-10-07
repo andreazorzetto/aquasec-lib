@@ -3,8 +3,15 @@ Enforcer-related API functions for Aqua library
 """
 
 
+import json
+
 from .exceptions import ApiError
-from .common import _request_with_retry
+from .common import (
+    _request_with_retry,
+    path_segment,
+    resolve_timeout,
+    response_json,
+)
 
 
 def api_get_enforcer_groups(server, token, enforcer_group=None, scope=None, page_index=1, page_size=100, verbose=False):
@@ -422,3 +429,233 @@ def get_capability_rollup(server, token, capability="amp", groups=None, verbose=
         "excluded_types": excluded,
         "utilization_pct": utilization,
     }
+
+
+# --------------------------------------------------------------------------- #
+# Enforcer group CRUD
+#
+# Groups are addressed by ``id`` -- a string the creator chooses, which is NOT
+# the same field as ``logicalname`` (that one may be empty).
+#
+# Secrets: every read of a group returns its registration token, both on its own
+# and embedded in ``install_command`` / ``command``. That is true of the list and
+# of a single get, not only of create. So:
+#
+#   * nothing in this section prints a request or response body, even verbose;
+#   * error messages are built from a redacted copy of the response;
+#   * split_enforcer_group_secrets() separates settings from secrets for callers
+#     that want to log, diff or store the settings.
+# --------------------------------------------------------------------------- #
+
+ENFORCER_GROUPS_PATH = "/api/v1/hostsbatch"
+
+_JSON = {"Content-Type": "application/json"}
+_REDACTED = "***REDACTED***"
+
+
+def split_enforcer_group_secrets(group):
+    """Separate a group's settings from its credential-bearing fields.
+
+    Returns:
+        (settings, secrets): two new dicts. ``settings`` is safe to log, diff and
+        store; ``secrets`` holds whichever of SENSITIVE_GROUP_FIELDS were present.
+    """
+    settings = {k: v for k, v in group.items() if k not in SENSITIVE_GROUP_FIELDS}
+    secrets = {k: group[k] for k in SENSITIVE_GROUP_FIELDS if k in group}
+    return settings, secrets
+
+
+def _redact(value):
+    if isinstance(value, dict):
+        return {k: (_REDACTED if k in SENSITIVE_GROUP_FIELDS and v else _redact(v))
+                for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact(v) for v in value]
+    return value
+
+
+def _secret_values(value, found=None):
+    """Every non-empty string held in a sensitive field, anywhere in a body."""
+    found = set() if found is None else found
+    if isinstance(value, dict):
+        for k, v in value.items():
+            if k in SENSITIVE_GROUP_FIELDS and v:
+                if isinstance(v, str):
+                    found.add(v)
+                else:
+                    _all_strings(v, found)
+            else:
+                _secret_values(v, found)
+    elif isinstance(value, list):
+        for v in value:
+            _secret_values(v, found)
+    return found
+
+
+def _all_strings(value, found):
+    if isinstance(value, str) and value:
+        found.add(value)
+    elif isinstance(value, dict):
+        for v in value.values():
+            _all_strings(v, found)
+    elif isinstance(value, list):
+        for v in value:
+            _all_strings(v, found)
+
+
+def _mask(text, secrets):
+    # Longest first, so a token embedded in an install command is masked whole.
+    for secret in sorted(secrets, key=len, reverse=True):
+        if len(secret) >= 8:
+            text = text.replace(secret, _REDACTED)
+    return text
+
+
+def _redacted_text(res):
+    """The response body with secrets masked, for use in errors.
+
+    A non-JSON body cannot be redacted field by field, so it is not echoed at
+    all -- only its length. Losing a little diagnostic detail is the right trade
+    against a registration token appearing in a CI log.
+    """
+    body = response_json(res)
+    if body is None:
+        return f"<{len(res.text or '')} bytes, not shown>" if res.text else ""
+    return json.dumps(_redact(body))[:500]
+
+
+def _raise_group(res, action):
+    body = response_json(res)
+    secrets = _secret_values(body) if body is not None else set()
+    text = _mask(_redacted_text(res), secrets)
+    message = text
+    if isinstance(body, dict) and body.get("message"):
+        # The field-level redaction cannot see a token repeated inside free
+        # text, so mask every secret value found elsewhere in the body as well.
+        message = _mask(str(_redact(body)["message"]), secrets)
+    raise ApiError(f"{action}: HTTP {res.status_code} - {message}",
+                   status_code=res.status_code, response_text=text)
+
+
+def _group_url(server, group_id):
+    return f"{server}{ENFORCER_GROUPS_PATH}/{path_segment(group_id)}"
+
+
+def api_get_enforcer_group(server, token, group_id, timeout=None, verbose=False):
+    """Get one enforcer group by id (raw call). Missing is HTTP 404.
+
+    The response contains the group's registration token.
+    """
+    api_url = _group_url(server, group_id)
+    if verbose:
+        print(f"GET {api_url}")
+    return _request_with_retry('GET', api_url, token,
+                               timeout=resolve_timeout(timeout), verbose=verbose)
+
+
+def api_create_enforcer_group(server, token, group, timeout=None, verbose=False):
+    """Create an enforcer group (raw call). ``group`` must include ``id``.
+
+    Gateways need not be given: Aqua assigns one. The response contains the
+    registration token.
+    """
+    api_url = server + ENFORCER_GROUPS_PATH
+    if verbose:
+        print(f"POST {api_url} id={group.get('id')!r}")
+    return _request_with_retry('POST', api_url, token, headers=dict(_JSON), json=group,
+                               timeout=resolve_timeout(timeout), verbose=verbose)
+
+
+def api_update_enforcer_group(server, token, group, update_enforcers=True, timeout=None,
+                              verbose=False):
+    """Replace an enforcer group (raw call). ``group`` must include ``id``.
+
+    Aqua identifies the group from ``id`` in the body; there is no id in the
+    URL. ``update_enforcers`` pushes the new settings to the group's existing
+    enforcers as well as to future ones.
+    """
+    api_url = server + ENFORCER_GROUPS_PATH
+    if verbose:
+        print(f"PUT {api_url} id={group.get('id')!r} update_enforcers={update_enforcers}")
+    return _request_with_retry('PUT', api_url, token, headers=dict(_JSON), json=group,
+                               params={'update_enforcers': 'true' if update_enforcers else 'false'},
+                               timeout=resolve_timeout(timeout), verbose=verbose)
+
+
+def api_delete_enforcer_group(server, token, group_id, delete_related=False, timeout=None,
+                              verbose=False):
+    """Delete an enforcer group by id (raw call).
+
+    ``delete_related`` also removes the group's enforcers, per Aqua's docs
+    ("Delete an Enforcer group and its related Enforcers"). It defaults to off
+    so that removing a group never silently takes its enforcers with it.
+    """
+    api_url = _group_url(server, group_id)
+    if verbose:
+        print(f"DELETE {api_url} delete_related={delete_related}")
+    params = {'delete_related': 'true'} if delete_related else None
+    return _request_with_retry('DELETE', api_url, token, params=params,
+                               timeout=resolve_timeout(timeout), verbose=verbose)
+
+
+def get_enforcer_group(server, token, group_id, timeout=None, verbose=False):
+    """The complete enforcer group, or None if no group has that id.
+
+    The result includes the registration token; see split_enforcer_group_secrets.
+    """
+    res = api_get_enforcer_group(server, token, group_id, timeout=timeout, verbose=verbose)
+    if res.status_code == 404:
+        return None
+    if res.status_code != 200:
+        _raise_group(res, f"Failed to get enforcer group {group_id!r}")
+    return res.json()
+
+
+def create_enforcer_group(server, token, group, timeout=None, verbose=False):
+    """Create an enforcer group.
+
+    Returns:
+        The response body (which carries the registration token) or None if
+        Aqua sent none -- in which case read the group back to get the token.
+
+    Raises:
+        ValueError: if ``group`` has no id.
+        ApiError: on any non-2xx response, with secrets redacted.
+    """
+    if not group.get("id"):
+        raise ValueError("an enforcer group needs an id")
+    res = api_create_enforcer_group(server, token, group, timeout=timeout, verbose=verbose)
+    if not 200 <= res.status_code < 300:
+        _raise_group(res, f"Failed to create enforcer group {group['id']!r}")
+    return response_json(res)
+
+
+def update_enforcer_group(server, token, group, update_enforcers=True, strip_secrets=True,
+                          timeout=None, verbose=False):
+    """Replace an enforcer group with ``group`` (the complete object, with ``id``).
+
+    ``strip_secrets`` (the default) removes the credential-bearing fields from
+    the body before sending: they are server-generated, and leaving them out
+    keeps the token out of any request logging along the way. Verified live: an
+    update without them is accepted and the registration token is unchanged.
+    """
+    if not group.get("id"):
+        raise ValueError("an enforcer group needs an id")
+    body = split_enforcer_group_secrets(group)[0] if strip_secrets else group
+    res = api_update_enforcer_group(server, token, body, update_enforcers=update_enforcers,
+                                    timeout=timeout, verbose=verbose)
+    if not 200 <= res.status_code < 300:
+        _raise_group(res, f"Failed to update enforcer group {group['id']!r}")
+    return response_json(res)
+
+
+def delete_enforcer_group(server, token, group_id, delete_related=False, missing_ok=False,
+                          timeout=None, verbose=False):
+    """Delete an enforcer group. True if deleted, False if missing and ``missing_ok``."""
+    res = api_delete_enforcer_group(server, token, group_id, delete_related=delete_related,
+                                    timeout=timeout, verbose=verbose)
+    if res.status_code == 404 and missing_ok:
+        return False
+    if not 200 <= res.status_code < 300:
+        _raise_group(res, f"Failed to delete enforcer group {group_id!r}")
+    return True
