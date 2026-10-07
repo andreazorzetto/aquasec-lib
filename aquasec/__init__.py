@@ -217,6 +217,8 @@ from .common import (
     set_request_defaults,
     get_request_defaults,
     reset_request_defaults,
+    set_show_secrets,
+    get_show_secrets,
     DEFAULT_API_TIMEOUT
 )
 
@@ -432,6 +434,8 @@ __all__ = [
     'set_request_defaults',
     'get_request_defaults',
     'reset_request_defaults',
+    'set_show_secrets',
+    'get_show_secrets',
     'DEFAULT_API_TIMEOUT',
     
     # Configuration management

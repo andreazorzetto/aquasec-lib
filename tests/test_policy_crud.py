@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from aquasec import assurance_policies as ap
 from aquasec import enforcers as eg
 from aquasec import runtime_policies as rp
-from aquasec.common import set_request_defaults
+from aquasec.common import get_show_secrets, set_request_defaults, set_show_secrets
 from aquasec.exceptions import ApiError
 
 SERVER = "https://tenant.cloud.aquasec.com"
@@ -316,3 +316,52 @@ class TestEnforcerGroupCrud:
     def test_delete_missing_ok(self, req):
         req.return_value = _resp(404, {"message": "not found"})
         assert eg.delete_enforcer_group(SERVER, TOKEN, "x", missing_ok=True) is False
+
+
+class TestShowSecretsSwitch:
+    """Opt-in: secrets may appear in library output only when asked for."""
+
+    @patch("aquasec.enforcers._request_with_retry")
+    def test_default_verbose_output_shows_bodies_redacted(self, req, capsys):
+        req.return_value = _resp(200, _group())
+        eg.get_enforcer_group(SERVER, TOKEN, "cluster-a", verbose=True)
+        out = capsys.readouterr().out
+        assert '"id": "cluster-a"' in out          # the body is shown...
+        assert "REDACTED" in out                    # ...with secrets masked
+        assert GROUP_TOKEN not in out
+
+    @patch("aquasec.enforcers._request_with_retry")
+    def test_switched_on_verbose_output_includes_the_token(self, req, capsys):
+        set_show_secrets(True)
+        req.return_value = _resp(200, _group())
+        eg.get_enforcer_group(SERVER, TOKEN, "cluster-a", verbose=True)
+        req.return_value = _resp(201, _group())
+        eg.create_enforcer_group(SERVER, TOKEN, {"id": "cluster-a"}, verbose=True)
+        assert GROUP_TOKEN in capsys.readouterr().out
+
+    @patch("aquasec.enforcers._request_with_retry")
+    def test_switched_on_errors_carry_the_raw_response(self, req):
+        set_show_secrets(True)
+        req.return_value = _resp(409, {"message": f"token {GROUP_TOKEN} taken", "token": GROUP_TOKEN})
+        with pytest.raises(ApiError) as exc:
+            eg.create_enforcer_group(SERVER, TOKEN, {"id": "cluster-a"})
+        assert GROUP_TOKEN in str(exc.value)
+        assert GROUP_TOKEN in exc.value.response_text
+
+    @patch("aquasec.enforcers._request_with_retry")
+    def test_switching_off_again_restores_redaction(self, req):
+        set_show_secrets(True)
+        set_show_secrets(False)
+        req.return_value = _resp(409, {"message": "taken", "token": GROUP_TOKEN})
+        with pytest.raises(ApiError) as exc:
+            eg.create_enforcer_group(SERVER, TOKEN, {"id": "cluster-a"})
+        assert GROUP_TOKEN not in str(exc.value) + exc.value.response_text
+
+    def test_off_by_default(self):
+        assert get_show_secrets() is False
+
+    @patch("aquasec.enforcers._request_with_retry")
+    def test_the_data_is_never_withheld_either_way(self, req):
+        """The switch governs output only; callers always get the full object."""
+        req.return_value = _resp(200, _group())
+        assert eg.get_enforcer_group(SERVER, TOKEN, "cluster-a")["token"] == GROUP_TOKEN

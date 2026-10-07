@@ -8,6 +8,7 @@ import json
 from .exceptions import ApiError
 from .common import (
     _request_with_retry,
+    get_show_secrets,
     path_segment,
     resolve_timeout,
     response_json,
@@ -441,8 +442,8 @@ def get_capability_rollup(server, token, capability="amp", groups=None, verbose=
 # and embedded in ``install_command`` / ``command``. That is true of the list and
 # of a single get, not only of create. So:
 #
-#   * nothing in this section prints a request or response body, even verbose;
-#   * error messages are built from a redacted copy of the response;
+#   * verbose output and error messages are redacted unless the caller has
+#     opted in with common.set_show_secrets(True);
 #   * split_enforcer_group_secrets() separates settings from secrets for callers
 #     that want to log, diff or store the settings.
 # --------------------------------------------------------------------------- #
@@ -524,7 +525,17 @@ def _redacted_text(res):
     return json.dumps(_redact(body))[:500]
 
 
+def _for_output(body):
+    """A body as the library may print it: redacted unless secrets are shown."""
+    if body is None:
+        return "<empty>"
+    return json.dumps(body if get_show_secrets() else _redact(body))[:4000]
+
+
 def _raise_group(res, action):
+    if get_show_secrets():
+        raise ApiError(f"{action}: HTTP {res.status_code} - {(res.text or '').strip()[:500]}",
+                       status_code=res.status_code, response_text=res.text)
     body = response_json(res)
     secrets = _secret_values(body) if body is not None else set()
     text = _mask(_redacted_text(res), secrets)
@@ -608,7 +619,10 @@ def get_enforcer_group(server, token, group_id, timeout=None, verbose=False):
         return None
     if res.status_code != 200:
         _raise_group(res, f"Failed to get enforcer group {group_id!r}")
-    return res.json()
+    group = res.json()
+    if verbose:
+        print(f"  response: {_for_output(group)}")
+    return group
 
 
 def create_enforcer_group(server, token, group, timeout=None, verbose=False):
@@ -627,7 +641,10 @@ def create_enforcer_group(server, token, group, timeout=None, verbose=False):
     res = api_create_enforcer_group(server, token, group, timeout=timeout, verbose=verbose)
     if not 200 <= res.status_code < 300:
         _raise_group(res, f"Failed to create enforcer group {group['id']!r}")
-    return response_json(res)
+    created = response_json(res)
+    if verbose:
+        print(f"  response: {_for_output(created)}")
+    return created
 
 
 def update_enforcer_group(server, token, group, update_enforcers=True, strip_secrets=True,
@@ -642,6 +659,8 @@ def update_enforcer_group(server, token, group, update_enforcers=True, strip_sec
     if not group.get("id"):
         raise ValueError("an enforcer group needs an id")
     body = split_enforcer_group_secrets(group)[0] if strip_secrets else group
+    if verbose:
+        print(f"  request: {_for_output(body)}")
     res = api_update_enforcer_group(server, token, body, update_enforcers=update_enforcers,
                                     timeout=timeout, verbose=verbose)
     if not 200 <= res.status_code < 300:

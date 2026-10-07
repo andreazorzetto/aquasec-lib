@@ -86,6 +86,30 @@ def reset_request_defaults():
     _request_defaults.update(_REQUEST_DEFAULTS_INITIAL)
 
 
+# Whether credential-bearing fields (enforcer registration tokens and the
+# install commands that embed them) may appear in output the library produces
+# itself: error messages and verbose printing. Off by default, because that
+# output tends to land in CI and hook logs that are kept, shared and shipped.
+# The data itself is never withheld -- functions return complete objects either
+# way -- this only governs what the library writes out on its own.
+_show_secrets = False
+
+
+def set_show_secrets(show):
+    """Allow (True) or redact (False, the default) secrets in library output.
+
+    Affects error messages, ``ApiError.response_text`` and verbose output. Turn
+    it on for interactive debugging; leave it off anywhere output is logged.
+    """
+    global _show_secrets
+    _show_secrets = bool(show)
+
+
+def get_show_secrets():
+    """Whether secrets may currently appear in library output."""
+    return _show_secrets
+
+
 def resolve_timeout(timeout=None):
     """The timeout an API call should use: explicit, then library default, then 30s."""
     if timeout is not None:
