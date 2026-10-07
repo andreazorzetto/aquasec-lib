@@ -61,3 +61,49 @@ def test_reset_restores_the_original_defaults():
     set_request_defaults(verify=True, timeout=3)
     reset_request_defaults()
     assert get_request_defaults() == {"verify": False}
+
+
+# --- Sign-in calls --------------------------------------------------------------
+
+def _login_ok(payload):
+    m = Mock()
+    m.status_code = 200
+    m.json.return_value = payload
+    return m
+
+
+def _sign_in_all_three(post):
+    from aquasec import auth
+    post.return_value = _login_ok({"data": "tok"})
+    auth.api_auth("k", "s", "https://api.example", "role", '["ANY:*"]')
+    key_verify = post.call_args.kwargs["verify"]
+
+    post.return_value = _login_ok({"data": {"token": "tok"}})
+    auth.user_pass_saas_auth("u", "p", "https://api.example")
+    saas_user_verify = post.call_args.kwargs["verify"]
+
+    post.return_value = _login_ok({"token": "tok"})
+    auth.user_pass_onprem_auth("u", "p", "https://aqua.internal")
+    onprem_verify = post.call_args.kwargs["verify"]
+    return key_verify, saas_user_verify, onprem_verify
+
+
+@patch("aquasec.auth.requests.post")
+def test_sign_in_keeps_its_historical_tls_behaviour_by_default(post):
+    """No caller-visible change unless a setting is chosen."""
+    assert _sign_in_all_three(post) == (True, False, False)
+
+
+@patch("aquasec.auth.requests.post")
+def test_an_explicit_ca_bundle_reaches_every_sign_in_call(post):
+    """Sign-in carries the password: it must honour the caller's TLS choice,
+    on-prem above all, where an internal CA is the norm."""
+    set_request_defaults(verify="/etc/ssl/internal-ca.pem")
+    assert _sign_in_all_three(post) == ("/etc/ssl/internal-ca.pem",) * 3
+
+
+@patch("aquasec.auth.requests.post")
+def test_reset_restores_historical_sign_in_behaviour(post):
+    set_request_defaults(verify=True)
+    reset_request_defaults()
+    assert _sign_in_all_three(post) == (True, False, False)

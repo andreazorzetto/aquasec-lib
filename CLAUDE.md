@@ -143,7 +143,7 @@ Secure, profile-based credential storage with:
 
 ## Version Information
 
-Current version: 0.14.0 (see setup.py and aquasec/__init__.py)
+Current version: 0.14.1 (see setup.py and aquasec/__init__.py)
 
 Major versions:
 - v0.4.0: Added serverless functions support, enforcer optimizations

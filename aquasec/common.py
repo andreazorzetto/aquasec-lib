@@ -46,6 +46,11 @@ _TOKEN_MAP_MAX = 64
 _REQUEST_DEFAULTS_INITIAL = {"verify": False}
 _request_defaults = dict(_REQUEST_DEFAULTS_INITIAL)
 
+# Whether a caller has chosen a TLS verification setting explicitly. Sign-in
+# calls honour the setting only when one was chosen; otherwise they keep their
+# historical behaviour, so no existing utility changes. See auth_verify().
+_verify_configured = False
+
 # Timeout used by API functions that take a ``timeout`` argument and were not
 # given one, when no library-wide default has been set. Without a timeout a
 # stalled connection blocks forever, which in a CI job or a Kubernetes hook means
@@ -66,8 +71,10 @@ def set_request_defaults(verify=_UNSET, timeout=_UNSET):
 
     A value passed explicitly to an individual call always wins.
     """
+    global _verify_configured
     if verify is not _UNSET:
         _request_defaults["verify"] = verify
+        _verify_configured = True
     if timeout is not _UNSET:
         if timeout is None:
             _request_defaults.pop("timeout", None)
@@ -82,8 +89,21 @@ def get_request_defaults():
 
 def reset_request_defaults():
     """Restore the original request defaults. Mainly for tests."""
+    global _verify_configured
     _request_defaults.clear()
     _request_defaults.update(_REQUEST_DEFAULTS_INITIAL)
+    _verify_configured = False
+
+
+def auth_verify(historical):
+    """TLS verification for a sign-in call.
+
+    Sign-in is the call that carries the password, so it must honour a CA bundle
+    or ``verify=True`` when the caller has set one with set_request_defaults().
+    When nothing was set, each sign-in function keeps the behaviour it has
+    always had (``historical``), so existing utilities are unaffected.
+    """
+    return _request_defaults["verify"] if _verify_configured else historical
 
 
 # Whether credential-bearing fields (enforcer registration tokens and the
