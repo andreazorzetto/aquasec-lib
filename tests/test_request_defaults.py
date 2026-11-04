@@ -107,3 +107,73 @@ def test_reset_restores_historical_sign_in_behaviour(post):
     set_request_defaults(verify=True)
     reset_request_defaults()
     assert _sign_in_all_three(post) == (True, False, False)
+
+
+class TestRateLimit:
+    def _responses(self, *codes, headers=None):
+        from unittest.mock import Mock
+        return [Mock(status_code=c, headers=headers or {}) for c in codes]
+
+    def test_a_429_is_waited_out(self):
+        from unittest.mock import patch
+        from aquasec.common import _request_with_retry
+        with patch("aquasec.common.requests.request", side_effect=self._responses(429, 429, 200)) as request, \
+                patch("aquasec.common.time.sleep") as sleep:
+            assert _request_with_retry("GET", "https://x", "t").status_code == 200
+        assert request.call_count == 3
+        assert [c.args[0] for c in sleep.call_args_list] == [2.0, 4.0]
+
+    def test_retry_after_is_honoured_up_to_the_cap(self):
+        from unittest.mock import patch
+        from aquasec.common import _request_with_retry
+        for value, waited in (("7", 7.0), ("9999", 30.0)):
+            with patch("aquasec.common.requests.request",
+                       side_effect=self._responses(429, 200, headers={"Retry-After": value})), \
+                    patch("aquasec.common.time.sleep") as sleep:
+                _request_with_retry("GET", "https://x", "t")
+            assert sleep.call_args.args[0] == waited
+
+    def test_it_gives_up_and_returns_the_429(self):
+        from unittest.mock import patch
+        from aquasec.common import _request_with_retry
+        with patch("aquasec.common.requests.request", side_effect=self._responses(*[429] * 5)) as request, \
+                patch("aquasec.common.time.sleep"):
+            assert _request_with_retry("GET", "https://x", "t").status_code == 429
+        assert request.call_count == 5
+
+
+class TestRedirects:
+    def test_a_sign_in_follows_as_set(self):
+        from unittest.mock import Mock, patch
+        from aquasec.auth import user_pass_onprem_auth
+        from aquasec.common import reset_request_defaults, set_request_defaults
+        res = Mock(status_code=200, json=lambda: {"token": "t"}, headers={})
+        try:
+            with patch("aquasec.auth.requests.post", return_value=res) as post:
+                user_pass_onprem_auth("u", "p", "https://x")
+            assert post.call_args.kwargs["allow_redirects"] is True
+
+            set_request_defaults(allow_redirects=False)
+            with patch("aquasec.auth.requests.post", return_value=res) as post:
+                user_pass_onprem_auth("u", "p", "https://x")
+            assert post.call_args.kwargs["allow_redirects"] is False
+        finally:
+            reset_request_defaults()
+
+    def test_other_calls_follow_as_set(self):
+        from unittest.mock import Mock, patch
+        from aquasec.common import _request_with_retry, reset_request_defaults, set_request_defaults
+        try:
+            set_request_defaults(allow_redirects=False)
+            with patch("aquasec.common.requests.request", return_value=Mock(status_code=200)) as request:
+                _request_with_retry("GET", "https://x", "t")
+            assert request.call_args.kwargs["allow_redirects"] is False
+        finally:
+            reset_request_defaults()
+
+
+def test_a_bad_retry_after_falls_back():
+    from unittest.mock import Mock
+    from aquasec.common import _retry_after
+    for value in ("-1", "nan", "inf", "Wed, 21 Oct 2026 07:28:00 GMT"):
+        assert _retry_after(Mock(headers={"Retry-After": value}), 0) == 2.0

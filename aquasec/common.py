@@ -60,14 +60,17 @@ DEFAULT_API_TIMEOUT = 30
 _UNSET = object()
 
 
-def set_request_defaults(verify=_UNSET, timeout=_UNSET):
-    """Set library-wide defaults for TLS verification and request timeout.
+def set_request_defaults(verify=_UNSET, timeout=_UNSET, allow_redirects=_UNSET):
+    """Set library-wide defaults for TLS verification, timeout and redirects.
 
     Args:
         verify: ``True`` to verify against the system trust store, a path to a
             CA bundle, or ``False`` to disable verification (the default).
         timeout: Seconds, or a ``(connect, read)`` tuple. ``None`` removes a
             previously set default.
+        allow_redirects: ``False`` to treat a redirect as a response rather than
+            follow it. A redirect replays a sign-in's body, password included,
+            to wherever it points, even from HTTPS to HTTP.
 
     A value passed explicitly to an individual call always wins.
     """
@@ -80,6 +83,13 @@ def set_request_defaults(verify=_UNSET, timeout=_UNSET):
             _request_defaults.pop("timeout", None)
         else:
             _request_defaults["timeout"] = timeout
+    if allow_redirects is not _UNSET:
+        _request_defaults["allow_redirects"] = allow_redirects
+
+
+def auth_redirects():
+    """Whether a sign-in call follows redirects: as set, else as it always has."""
+    return _request_defaults.get("allow_redirects", True)
 
 
 def get_request_defaults():
@@ -345,6 +355,10 @@ def resolve_console_url(token=None, verbose=False):
     return None
 
 
+RATE_LIMIT_RETRIES = 4
+RATE_LIMIT_MAX_WAIT = 30.0
+
+
 def validate_console_url(server, token, verbose=False):
     """
     Check that a console URL actually serves the Aqua console API.
@@ -368,7 +382,8 @@ def validate_console_url(server, token, verbose=False):
 
     try:
         res = requests.get(api_url, headers={'Authorization': f'Bearer {token}'},
-                           params={'page': 1, 'pagesize': 1}, verify=False, timeout=20)
+                           params={'page': 1, 'pagesize': 1}, verify=auth_verify(False),
+                           allow_redirects=auth_redirects(), timeout=20)
     except requests.exceptions.RequestException as e:
         return False, f"Could not reach {server} ({type(e).__name__}). Check the console URL."
 
@@ -391,6 +406,17 @@ def validate_console_url(server, token, verbose=False):
 
     return False, (f"{server} did not return the expected API response "
                    f"(HTTP {res.status_code}, content-type '{content_type or 'unknown'}').")
+
+
+def _retry_after(res, attempt):
+    """Seconds to wait after a 429: what the server says, else 2, 4, 8..."""
+    try:
+        wait = float(res.headers.get('Retry-After'))
+    except (TypeError, ValueError):
+        wait = float('nan')
+    if not 0 <= wait < float('inf'):            # absent, a date, negative, nan
+        wait = 2.0 ** (attempt + 1)
+    return min(wait, RATE_LIMIT_MAX_WAIT)
 
 
 def _request_with_retry(method, url, token, headers=None, verbose=False, **kwargs):
@@ -427,8 +453,17 @@ def _request_with_retry(method, url, token, headers=None, verbose=False, **kwarg
     for key, value in _request_defaults.items():
         kwargs.setdefault(key, value)
 
-    # Make the request
+    # Make the request. A rate limit is worth waiting out: the caller's work is
+    # still valid, and what it would do with a 429 is fail part-way through.
     res = requests.request(method, url, headers=headers, **kwargs)
+    for attempt in range(RATE_LIMIT_RETRIES):
+        if res.status_code != 429:
+            break
+        delay = _retry_after(res, attempt)
+        if verbose:
+            print(f"Rate limited; retrying in {delay:g}s")
+        time.sleep(delay)
+        res = requests.request(method, url, headers=headers, **kwargs)
 
     # Handle 401 - token expired (or otherwise rejected)
     if res.status_code == 401:
