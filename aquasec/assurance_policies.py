@@ -3,7 +3,8 @@ Assurance policy API functions for the aquasec library.
 
 Assurance policies are addressed by type *and* name:
 ``/api/v2/assurance_policy/{type}/{name}``. The types are ``image``, ``host``,
-``function`` and ``kubernetes``; a policy of one type is invisible under another.
+``function``, ``kubernetes`` and ``cf_application`` (VMware Tanzu applications);
+a policy of one type is invisible under another.
 
 Same conventions as ``runtime_policies``: ``api_*`` functions return the raw
 response, the rest interpret it, return None for "does not exist", and raise
@@ -21,7 +22,7 @@ from .exceptions import ApiError
 
 ASSURANCE_POLICY_PATH = "/api/v2/assurance_policy"
 
-ASSURANCE_TYPES = ("image", "host", "function", "kubernetes")
+ASSURANCE_TYPES = ("image", "host", "function", "kubernetes", "cf_application")
 
 _JSON = {"Content-Type": "application/json"}
 

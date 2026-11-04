@@ -242,3 +242,23 @@ class TestAuthenticateGating:
         with patch.dict(os.environ, partial, clear=True):
             with pytest.raises(MissingCredentialsError):
                 auth_mod.authenticate()
+
+
+class TestValidateConsoleUrlTls:
+    """Its request carries the bearer token, so it honours an explicit TLS setting."""
+
+    def test_verification_follows_the_library_setting(self):
+        from aquasec.common import reset_request_defaults, set_request_defaults
+        res = Mock(status_code=200, headers={"content-type": "application/json"})
+        try:
+            set_request_defaults(verify=True)
+            with patch("aquasec.common.requests.get", return_value=res) as get:
+                validate_console_url("https://x", "t")
+            assert get.call_args.kwargs["verify"] is True
+
+            reset_request_defaults()
+            with patch("aquasec.common.requests.get", return_value=res) as get:
+                validate_console_url("https://x", "t")
+            assert get.call_args.kwargs["verify"] is False
+        finally:
+            reset_request_defaults()

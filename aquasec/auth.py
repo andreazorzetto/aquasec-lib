@@ -11,7 +11,7 @@ import requests
 import time
 from os import environ
 
-from .common import auth_verify, normalize_console_url, _prune_token_map
+from .common import auth_verify, normalize_console_url, _prune_token_map, auth_redirects
 from .exceptions import AuthenticationError, MissingCredentialsError
 
 
@@ -235,7 +235,8 @@ def api_auth(api_key, api_secret, api_endpoint, api_role, api_methods, verbose=F
     }
 
     response = requests.post(api_url, headers=headers, data=post_body_str,
-                             verify=auth_verify(True), timeout=10)
+                             verify=auth_verify(True),
+                             allow_redirects=auth_redirects(), timeout=10)
 
     # Extract status and token from the response
     if response.status_code == 200:
@@ -261,7 +262,8 @@ def user_pass_saas_auth(user, passwd, api_endpoint, verbose=False):
     if verbose:
         print(f"Auth URL: {api_url}")
     
-    res = requests.post(url=api_url, json=auth_info, verify=auth_verify(False), timeout=10)
+    res = requests.post(url=api_url, json=auth_info, verify=auth_verify(False),
+                             allow_redirects=auth_redirects(), timeout=10)
 
     # One of the authentications above succeeded
     if res.status_code == 200:
@@ -292,7 +294,8 @@ def user_pass_onprem_auth(user, passwd, csp_endpoint):
 
     # Do authentication
     api_url = csp_endpoint + "/api/v1/login"
-    res = requests.post(url=api_url, json=auth_info, verify=auth_verify(False), timeout=10)
+    res = requests.post(url=api_url, json=auth_info, verify=auth_verify(False),
+                             allow_redirects=auth_redirects(), timeout=10)
 
     # One of the authentications above succeeded
     if res.status_code == 200:

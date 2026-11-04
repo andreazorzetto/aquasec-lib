@@ -5,6 +5,16 @@ All notable changes to the aquasec library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.2] - 2026-11-04
+
+### Added
+- **`cf_application` assurance policies** (VMware Tanzu applications) in `assurance_policies.py`, alongside `image`, `host`, `function` and `kubernetes`.
+- **`set_request_defaults(allow_redirects=False)`**: treat a redirect as a response rather than follow it, sign-in included. A followed redirect replays the sign-in body to wherever it points, even from HTTPS to HTTP. The default is unchanged.
+
+### Fixed
+- **A rate limit (HTTP 429) failed the call.** `_request_with_retry()` now waits, as `Retry-After` says or for 2, 4, 8 and 16 seconds, and tries again, up to four times.
+- **`validate_console_url()` always skipped TLS verification**, and its request carries the bearer token. It now honours `set_request_defaults(verify=...)`, as sign-in does; with nothing set, its behaviour is unchanged.
+
 ## [0.14.1] - 2026-10-07
 
 ### Fixed
