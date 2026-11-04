@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **A rate limit (HTTP 429) failed the call.** `_request_with_retry()` now waits, as `Retry-After` says or for 2, 4, 8 and 16 seconds, and tries again, up to four times.
 - **`validate_console_url()` always skipped TLS verification**, and its request carries the bearer token. It now honours `set_request_defaults(verify=...)`, as sign-in does; with nothing set, its behaviour is unchanged.
+- **CI runs on Ubuntu 24.04.** `ubuntu-latest` moved to 26.04, which has no Python 3.8 or 3.9, and that stopped the release gate before any test ran.
 
 ## [0.14.1] - 2026-10-07
 
