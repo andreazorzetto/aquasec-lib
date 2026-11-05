@@ -18,7 +18,7 @@ jobs:
   # On push to main, schedule, dispatch, or workflow_call - run ALL scans
   # On PR - use path filtering
   detect-changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       # Path filtering is only meaningful on pull requests, where there is a base
       # to diff against. Everything else (push, schedule, dispatch, and release —
@@ -59,7 +59,7 @@ jobs:
 
   security-scan-library:
     needs: detect-changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: Security Scan - Library
     steps:
     - uses: actions/checkout@v5
@@ -95,7 +95,7 @@ jobs:
   security-scan-license-utility:
     needs: detect-changes
     if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.license-utility-changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: Security Scan - License Utility
     steps:
     - uses: actions/checkout@v5
@@ -131,7 +131,7 @@ jobs:
   security-scan-repo-breakdown:
     needs: detect-changes
     if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.repo-breakdown-changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: Security Scan - Repo Breakdown
     steps:
     - uses: actions/checkout@v5
@@ -167,7 +167,7 @@ jobs:
   security-scan-vm-extract:
     needs: detect-changes
     if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.vm-extract-changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: Security Scan - VM Extract
     steps:
     - uses: actions/checkout@v5
@@ -203,7 +203,7 @@ jobs:
   security-scan-repo-delete-utility:
     needs: detect-changes
     if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.repo-delete-utility-changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: Security Scan - Repo Delete Utility
     steps:
     - uses: actions/checkout@v5
@@ -239,7 +239,7 @@ jobs:
   security-scan-image-cleanup-utility:
     needs: detect-changes
     if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.image-cleanup-utility-changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: Security Scan - Image Cleanup Utility
     steps:
     - uses: actions/checkout@v5
@@ -275,7 +275,7 @@ jobs:
   security-scan-global-scope-extract:
     needs: detect-changes
     if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.global-scope-extract-changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: Security Scan - Global Scope Extract
     steps:
     - uses: actions/checkout@v5
@@ -311,7 +311,7 @@ jobs:
   security-scan-vuln-extract:
     needs: detect-changes
     if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.vuln-extract-changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: Security Scan - Vuln Extract
     steps:
     - uses: actions/checkout@v5
@@ -346,7 +346,7 @@ jobs:
 
   dependency-check:
     needs: detect-changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: Dependency Vulnerability Check
     steps:
     - uses: actions/checkout@v5

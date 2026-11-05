@@ -28,7 +28,7 @@ jobs:
   # Build and publish only after tests and security pass
   build-and-publish:
     needs: [run-tests, run-security]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - uses: actions/checkout@v5

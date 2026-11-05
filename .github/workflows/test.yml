@@ -16,7 +16,7 @@ permissions:
 jobs:
   # Path detection only used for PRs - on main push we run everything
   detect-changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       # Path filtering is only meaningful on pull requests, where there is a base
       # to diff against. Everything else (push, schedule, dispatch, and release —
@@ -60,7 +60,7 @@ jobs:
 
   test-library:
     needs: detect-changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ['3.8', '3.9', '3.10', '3.11']
@@ -93,7 +93,7 @@ jobs:
   test-license-utility:
     needs: detect-changes
     if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.license-utility-changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ['3.8', '3.9', '3.10', '3.11']
@@ -130,7 +130,7 @@ jobs:
   test-repo-breakdown:
     needs: detect-changes
     if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.repo-breakdown-changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ['3.8', '3.9', '3.10', '3.11']
@@ -167,7 +167,7 @@ jobs:
   test-vm-extract:
     needs: detect-changes
     if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.vm-extract-changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ['3.8', '3.9', '3.10', '3.11']
@@ -204,7 +204,7 @@ jobs:
   test-repo-delete-utility:
     needs: detect-changes
     if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.repo-delete-utility-changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ['3.8', '3.9', '3.10', '3.11']
@@ -241,7 +241,7 @@ jobs:
   test-image-cleanup-utility:
     needs: detect-changes
     if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.image-cleanup-utility-changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ['3.8', '3.9', '3.10', '3.11']
@@ -278,7 +278,7 @@ jobs:
   test-global-scope-extract:
     needs: detect-changes
     if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.global-scope-extract-changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ['3.8', '3.9', '3.10', '3.11']
@@ -315,7 +315,7 @@ jobs:
   test-vuln-extract:
     needs: detect-changes
     if: needs.detect-changes.outputs.run-all == 'true' || needs.detect-changes.outputs.vuln-extract-changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ['3.8', '3.9', '3.10', '3.11']
